@@ -34,14 +34,16 @@ class ActionComponent(Component):
     async def awakeInit(self):
         await super().awakeInit()
 
-        self.actionClient = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         self.actionClient.wait_for_server()
 
         asyncio.create_task(self.instructionLoop())
 
-    async def actionNav(self, x_axle=1, y_axle=0, x=0, y=0, z=0, w=1.0):
+    async def actionNav(self, x_axle=1, y_axle=0, x=0, y=0, z=0, w=0):
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "map"
+        goal.target_pose.header.stamp = rospy.Time.now()
+        
         # X轴
         goal.target_pose.pose.position.x = x_axle
         # Y轴
@@ -57,8 +59,8 @@ class ActionComponent(Component):
         self.actionClient.send_goal(goal)
         self.logger.info("开始导航")
 
-        # self.actionClient.wait_for_result()
-        await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result, ())
+        #self.actionClient.wait_for_result()
+        await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result)
 
         return self.actionClient.get_state()
 
@@ -70,12 +72,21 @@ class ActionComponent(Component):
 
         await self.main.exclusiveServerReportComponent.openRollingDoor()
 
-        self.main.laserRadarComponent.start()
+        start_time = asyncio.get_event_loop().time()
+        
+        while asyncio.get_event_loop().time() - start_time < 4:
+            self.main.motionComponent.setVelocity(linear_x=-0.2)
+            await asyncio.sleep(0.05)
+            pass
+        
+        self.main.motionComponent.stopMotion()
+        
+        #self.main.laserRadarComponent.start()
 
         completed: bool = False
 
         for retryCount in range(3):
-            if await self.actionNav(1, 0, 0, 0, 0, 1) == actionlib.GoalStatus.SUCCEEDED:
+            if await self.actionNav(-1, 0, 0, 0, 0, 0) == actionlib.GoalStatus.SUCCEEDED:
                 completed = True
                 break
 
@@ -516,7 +527,7 @@ class ActionComponent(Component):
                 
             self.logger.info("深度距离测试结束")
 
-    async def moveToTargetDistance(self, target_distance: float, speed: float = 0.1, timeout: float = 30.0):
+    async def moveToTargetDistance(self, target_distance: float, speed: float = 0.3, timeout: float = 30.0):
         """
         向前行驶到深度摄像头检测到的指定距离，到达后停车
         :param target_distance: 目标距离（米）
@@ -631,7 +642,10 @@ class ActionComponent(Component):
 
                 if key == "close":
                     await self.main.exclusiveServerReportComponent.closeRollingDoor()
-
+                
+                if key == "exitCabin":
+                    await self.exitCabin()
+                
                 if key == "calibration":
                     await self.calibration()
 
@@ -644,8 +658,8 @@ class ActionComponent(Component):
                 if key == "testDepthDistance":
                     await self.testDepthDistance()
 
-                if key == "moveToDistance1m":
-                    await self.moveToTargetDistance(1.0)  # 行驶到1米距离
+                if key == "moveToDistance05":
+                    await self.moveToTargetDistance(0.5)  # 行驶到1米距离
 
                 if key == "moveToDistance2m":
                     await self.moveToTargetDistance(2.0)  # 行驶到2米距离

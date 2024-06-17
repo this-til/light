@@ -29,7 +29,7 @@ class LaserRadarComponent(Component):
 
         rospy.Subscriber("/scan", LaserScan, self.laserRadarCallback)
         
-        asyncio.create_task(self.readAheadTestLoop())
+        #asyncio.create_task(self.readAheadTestLoop())
 
     def laserRadarCallback(self, msg):
         self.source.publish_nowait(msg.ranges)
