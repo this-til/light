@@ -1,4 +1,9 @@
+#!/usr/bin/python3
+
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def getAllTasks() -> list[asyncio.Task]:
@@ -12,18 +17,17 @@ def getAllTasks() -> list[asyncio.Task]:
 
 
 async def gracefulShutdown():
-    '''
+    """
     优雅关闭所有异步任务
-    '''
+    """
     tasks = getAllTasks()
     for task in tasks:
         task.cancel()  # 发送取消信号
-    
+
     for task in tasks:
         try:
             await task  # 等待任务完成
         except asyncio.CancelledError:
-            print(f"Task {task.get_name()} was cancelled.")
+            logging.error(f"Task {task.get_name()} was cancelled.")
         except Exception as e:
-            print(f"Task {task.get_name()} raised an exception: {e}")
-    
+            logging.error(f"Task {task.get_name()} raised an exception:", e)
