@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3False
 import logging
 import asyncio
 import serial_asyncio
@@ -11,7 +11,6 @@ logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] [%(name)s] [%(lev
 logger = logging.getLogger(__name__)
 
 active: bool = True
-
 
 def exitHandler():
     global active
