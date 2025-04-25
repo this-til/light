@@ -4,6 +4,8 @@ import logging
 import asyncio
 import serial_asyncio
 
+from util import Broadcaster
+
 logger = logging.getLogger(__name__)
 
 loop = asyncio.get_event_loop()
@@ -11,6 +13,8 @@ loop.set_debug(True)
 
 reader: asyncio.StreamReader = None
 writer: asyncio.StreamWriter = None
+
+usarReader: Broadcaster[bytes] = Broadcaster()
 
 
 async def asyncReadSerialLoop():
@@ -20,8 +24,7 @@ async def asyncReadSerialLoop():
     while True:
         try:
             data = await reader.read(1024)
-            # TODO
-            await asyncio.sleep(0.1)  # 休眠100ms
+            await usarReader.publish(data)
         except Exception as e:
             logger.exception(f"Error reading from serial: {str(e)}")
             return

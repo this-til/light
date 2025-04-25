@@ -1,21 +1,30 @@
 #!/usr/bin/python3False
 import logging
 import asyncio
-import serial_asyncio
+import server
+import device
+from flask import Flask
+
 
 import util
 import uart
 import camera
 
-logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+app = Flask(__name__)
+
+logging.basicConfig(
+    level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 active: bool = True
+
 
 def exitHandler():
     global active
     active = False
     logger.debug("Exiting...")
+
 
 async def main():
 
@@ -23,6 +32,8 @@ async def main():
 
         await uart.initUart()
         await camera.initCamera()
+        await server.initServer()
+        await device.initDevice()
 
         while active:
             await asyncio.sleep(1)
@@ -33,7 +44,9 @@ async def main():
 
         await uart.releaseUart()
         await camera.releaseCamera()
-        
+        await server.releaseServer()
+        await device.releaseDevice()
+
         exit(0)
         pass
 

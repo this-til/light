@@ -5,6 +5,7 @@ import asyncio
 import numpy as np
 import cv2
 from asyncio.subprocess import PIPE
+from util import Broadcaster
 
 import util
 import main
@@ -16,17 +17,17 @@ rtsp_port = "554"
 user = "admin"
 password = "qWERTYUIOP"
 
-width, height = 2560, 1140
+width, height = 2560, 1440
 fps = 25
 
 cameraRtspUrl = f"rtsp://{user}:{password}@{ip}:{rtsp_port}/Streaming/Channels/101"
 
-source: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-out: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
+source : Broadcaster[cv2.typing.MatLike] = Broadcaster()
+out : Broadcaster[cv2.typing.MatLike] = Broadcaster()
 
 cap: cv2.VideoCapture = None
 
-pushRtspUrl = "rtsp://localhost:8554/channels001"
+pushRtspUrl = "rtsp://localhost:8554/channels001?rtsp_transport=tcp"
 
 pushProcess: asyncio.subprocess.Process = None
 
@@ -42,7 +43,7 @@ async def releaseCap():
 async def releaseProcess():
     global pushProcess
 
-    if pushProcess and not pushProcess.stdin.closed:
+    if pushProcess:
         pushProcess.stdin.close()
     if not pushProcess.stdin.is_closing():
         await pushProcess.stdin.wait_closed()
@@ -66,6 +67,10 @@ async def readFrames():
         try:
 
             logger.info("尝试连接摄像头...")
+
+            # gst_pipeline = f"rtspsrc location={pushRtspUrl} latency=0 ! rtph264depay ! h264parse ! nvh264dec ! videoconvert ! appsink"
+            # cap = await asyncio.get_event_loop().run_in_executor(None, cv2.VideoCapture, gst_pipeline, cv2.CAP_GSTREAMER)
+
             cap = await asyncio.get_event_loop().run_in_executor(
                 None, cv2.VideoCapture, cameraRtspUrl
             )
@@ -84,14 +89,11 @@ async def readFrames():
                     logger.error("读取帧失败，释放资源并重连...")
                     raise Exception("读取帧失败...")
 
-                if source.full():
-                    try:
-                        source.get_nowait()
-                        logger.debug("队列已满，丢弃最旧帧")
-                    except asyncio.QueueEmpty:
-                        pass
+                h, w = frame.shape[:2]
+                if w < h:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
-                await source.put(frame)
+                await source.publish(frame)
 
         except asyncio.CancelledError:
             logger.info("任务被取消，执行清理...")
@@ -146,6 +148,9 @@ async def pushFrames():
         "tcp",
         pushRtspUrl,
     ]
+    
+    framesQueue : asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
+    out.subscribe(framesQueue)
 
     while True:  # 无限循环尝试重启FFmpeg进程
         try:
@@ -163,7 +168,7 @@ async def pushFrames():
             stdout_reader = asyncio.create_task(pushProcess.stdout.read())
 
             while True:  # 主循环处理帧
-                frame = await out.get()
+                frame = await framesQueue.get()
 
                 # 检查帧尺寸是否匹配预期
                 frame_height, frame_width = frame.shape[:2]
@@ -218,16 +223,20 @@ async def pushFrames():
 
 
 async def handleFrames():
+    
+    framesQueue : asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
+    source.subscribe(framesQueue)
+    
     while True:
 
         try:
 
-            sourceFrame = await source.get()
+            sourceFrame = await framesQueue.get()
             outFrame = sourceFrame.copy()
-            
+
             # TODO
-            
-            await out.put(outFrame)
+
+            await out.publish(outFrame)
 
         except asyncio.CancelledError:
             raise
