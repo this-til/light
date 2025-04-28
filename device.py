@@ -7,11 +7,27 @@ import util
 uartDataQueue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=16)
 logger = logging.getLogger(__name__)
 
-deviceValue =  {}
+deviceValue = {
+    "Modbus": {
+        "Weather": {
+            "Humidity": 46,
+            "Temperature": 24,
+            "PM10": 12,
+            "PM2.5": 9,
+            "Illuminance": 183,
+        },
+        "Wind_Speed": {"Wind_Speed": 0, "Wind_Direction": 315},
+        "Distance_Front": {"Distance": 100},
+        "Distance_Rear": {"Distance": 200},
+        "Distance_Left": {"Distance": 300},
+        "Distance_Right": {"Distance": 400},
+    }
+}
+
 
 async def readUartData():
     while True:
-        
+
         try:
             data: bytes = await uartDataQueue.get()
             decoded = data.decode("utf-8").strip()
@@ -23,10 +39,18 @@ async def readUartData():
 
 
 async def initDevice():
-    uart.usarReader.subscribe(uartDataQueue)
+    await uart.usarReader.subscribe(uartDataQueue)
     asyncio.create_task(readUartData())
     pass
 
 
 async def releaseDevice():
     pass
+
+
+def getDeviceValue(key: str):
+    return util.getFromJson(key, deviceValue)
+
+
+def setDeviceValue(key: str, value):
+    util.setFromJson(key, value, deviceValue)

@@ -7,9 +7,6 @@ import cv2
 from asyncio.subprocess import PIPE
 from util import Broadcaster
 
-import util
-import main
-
 logger = logging.getLogger(__name__)
 
 ip = "192.168.117.100"
@@ -22,12 +19,12 @@ fps = 25
 
 cameraRtspUrl = f"rtsp://{user}:{password}@{ip}:{rtsp_port}/Streaming/Channels/101"
 
-source : Broadcaster[cv2.typing.MatLike] = Broadcaster()
-out : Broadcaster[cv2.typing.MatLike] = Broadcaster()
+source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
 
 cap: cv2.VideoCapture = None
 
-pushRtspUrl = "rtsp://localhost:8554/channels001?rtsp_transport=tcp"
+pushRtspUrl = "rtsp://localhost:8554/channels001"
 
 pushProcess: asyncio.subprocess.Process = None
 
@@ -43,16 +40,21 @@ async def releaseCap():
 async def releaseProcess():
     global pushProcess
 
-    if pushProcess:
-        pushProcess.stdin.close()
-    if not pushProcess.stdin.is_closing():
-        await pushProcess.stdin.wait_closed()
-    if pushProcess:
-        try:
-            await asyncio.wait_for(pushProcess.wait(), timeout=2)
-        except asyncio.TimeoutError:
-            pushProcess.kill()
-            await pushProcess.wait()
+    if pushProcess is None:
+        return
+
+    pushProcess.stdin.close()
+
+    if pushProcess.stdin.is_closing():
+        return
+
+    await pushProcess.stdin.wait_closed()
+
+    try:
+        await asyncio.wait_for(pushProcess.wait(), timeout=2)
+    except asyncio.TimeoutError:
+        pushProcess.kill()
+        await pushProcess.wait()
 
     pushProcess = None
 
@@ -148,9 +150,9 @@ async def pushFrames():
         "tcp",
         pushRtspUrl,
     ]
-    
-    framesQueue : asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-    out.subscribe(framesQueue)
+
+    framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
+    await out.subscribe(framesQueue)
 
     while True:  # 无限循环尝试重启FFmpeg进程
         try:
@@ -223,10 +225,10 @@ async def pushFrames():
 
 
 async def handleFrames():
-    
-    framesQueue : asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-    source.subscribe(framesQueue)
-    
+
+    framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
+    await source.subscribe(framesQueue)
+
     while True:
 
         try:
