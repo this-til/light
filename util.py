@@ -66,6 +66,8 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
     async def publish(self, item: T) -> None:  # 发布项类型与泛型一致
         async with self.lock:
             for q in self.queues:
+                if q.full():
+                    q.get_nowait()
                 await q.put(item)
 
 
