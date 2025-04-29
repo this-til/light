@@ -10,17 +10,24 @@ logger = logging.getLogger(__name__)
 deviceValue = {
     "Modbus": {
         "Weather": {
-            "Humidity": 46,
+            "Humidity": 49,
             "Temperature": 24,
-            "PM10": 12,
-            "PM2.5": 9,
-            "Illuminance": 183,
+            "PM10": 38,
+            "PM2.5": 29,
+            "Illuminance": 212,
+            "Failed_Number": 1,
+            "State": "Normal",
         },
-        "Wind_Speed": {"Wind_Speed": 0, "Wind_Direction": 315},
-        "Distance_Front": {"Distance": 100},
-        "Distance_Rear": {"Distance": 200},
-        "Distance_Left": {"Distance": 300},
-        "Distance_Right": {"Distance": 400},
+        "Wind_Speed": {
+            "Wind_Speed": 0,
+            "Wind_Direction": 337.5,
+            "Failed_Number": 0,
+            "State": "Normal",
+        },
+        "Distance_Front": {"Distance": 345, "Failed_Number": 0, "State": "Normal"},
+        "Distance_Rear": {"Distance": 200, "Failed_Number": 10, "State": "Error"},
+        "Distance_Left": {"Distance": 300, "Failed_Number": 10, "State": "Error"},
+        "Distance_Right": {"Distance": 400, "Failed_Number": 10, "State": "Error"},
     }
 }
 

@@ -10,7 +10,6 @@ CONFIG_FILE_PATH = "light/config.json"
 
 needSave = False
 
-# TODO 完成加载，保存配置文件 .json
 configureMap = {}
 
 

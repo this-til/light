@@ -9,6 +9,7 @@ import signal
 import util
 import uart
 import camera
+import detection
 
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
@@ -37,17 +38,19 @@ async def main():
         await configure.initConfigure()
         await uart.initUart()
         await camera.initCamera()
-        #await server.initServer()
+        # await server.initServer()
         await device.initDevice()
+        await detection.initDetection()
 
         await server.runServer()
 
-        #while active:
+        # while active:
         #    await asyncio.sleep(1)
     finally:
 
         await util.gracefulShutdown()
 
+        await detection.releaseDetection()
         await device.releaseDevice()
         await server.releaseServer()
         await camera.releaseCamera()

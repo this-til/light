@@ -5,8 +5,68 @@ import logging
 import json
 from typing import Generic, TypeVar, Optional, Any
 import re
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+class Box:
+
+    x: float = 0
+    y: float = 0
+    w: float = 0
+    h: float = 0
+
+    def __init__(self, x: float, y: float, w: float, h: float):
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        pass
+
+    pass
+
+
+class Color:
+
+    r: int = 0
+    g: int = 0
+    b: int = 0
+    a: int = 0
+
+    def __init__(self, r: int, g: int, b: int, a: int = 255):
+
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+
+        pass
+
+
+T = TypeVar("T")  # 定义泛型类型
+
+
+class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
+    def __init__(self):
+        self.queues: list[asyncio.Queue[T]] = []  # 明确队列存储类型
+        self.lock = asyncio.Lock()
+
+    async def subscribe(
+        self, queue: asyncio.Queue[T]
+    ) -> None:  # 订阅的队列类型与泛型一致
+        async with self.lock:
+            self.queues.append(queue)
+
+    async def unsubscribe(self, queue: asyncio.Queue[T]) -> None:
+        async with self.lock:
+            self.queues.remove(queue)
+
+    async def publish(self, item: T) -> None:  # 发布项类型与泛型一致
+        async with self.lock:
+            for q in self.queues:
+                await q.put(item)
 
 
 def getAllTasks() -> list[asyncio.Task]:
@@ -34,30 +94,6 @@ async def gracefulShutdown():
             logging.error(f"Task {task.get_name()} was cancelled.")
         except Exception as e:
             logging.error(f"Task {task.get_name()} raised an exception:", e)
-
-
-T = TypeVar("T")  # 定义泛型类型
-
-
-class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
-    def __init__(self):
-        self.queues: list[asyncio.Queue[T]] = []  # 明确队列存储类型
-        self.lock = asyncio.Lock()
-
-    async def subscribe(
-        self, queue: asyncio.Queue[T]
-    ) -> None:  # 订阅的队列类型与泛型一致
-        async with self.lock:
-            self.queues.append(queue)
-
-    async def unsubscribe(self, queue: asyncio.Queue[T]) -> None:
-        async with self.lock:
-            self.queues.remove(queue)
-
-    async def publish(self, item: T) -> None:  # 发布项类型与泛型一致
-        async with self.lock:
-            for q in self.queues:
-                await q.put(item)
 
 
 def flattenJson(data, parent_key="", sep=".", list_sep="[{}]"):
@@ -208,3 +244,96 @@ def setFromJson(key: str, value: any, ojson: dict) -> None:
         if isinstance(ojson, dict) and isinstance(value, dict):
             ojson.clear()
             ojson.update(value)
+
+
+def changeSize(
+    inputImage: cv2.typing.MatLike, size: tuple[int, int]
+) -> cv2.typing.MatLike:
+    if inputImage is None:
+        return None
+
+    # 基础版：直接拉伸到目标尺寸（可能变形）
+    # return cv2.resize(inputImage, size, interpolation=cv2.INTER_LINEAR)
+
+    # 进阶版：保持比例 + 填充黑边（不变形）
+    h, w = inputImage.shape[:2]
+    target_w, target_h = size
+
+    # 计算缩放比例并调整
+    scale = min(target_w / w, target_h / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    resized = cv2.resize(inputImage, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    # 计算填充位置
+    delta_w = target_w - new_w
+    delta_h = target_h - new_h
+    top, bottom = delta_h // 2, delta_h - (delta_h // 2)
+    left, right = delta_w // 2, delta_w - (delta_w // 2)
+
+    # 添加黑边填充
+    return cv2.copyMakeBorder(
+        resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(0, 0, 0)
+    )
+
+
+def realBox(
+    boxes: list[np.ndarray],
+    originalSize: tuple[float, float],
+    targetSize: tuple[float, float],
+) -> list[Box]:
+    """
+    将模型输出的检测框坐标从预处理后的坐标系转换回原始图像坐标系，并封装为Box对象
+
+    参数:
+        boxes: np.ndarray, 形状为(N,4)的数组，每行表示一个检测框 (x1,y1,x2,y2)
+               x1,y1为左上角坐标，x2,y2为右下角坐标（基于预处理后的图像坐标系）
+        originalImageSize: tuple[float, float], 原始图像尺寸 (height, width)
+
+    返回:
+        List[Box]: 转换后的Box对象列表
+    """
+    # 获取原始图像尺寸
+    orig_height, orig_width = originalSize
+
+    # 预处理后的目标尺寸 (根据实际预处理参数修改，这里假设为640x640)
+    processed_height, processed_width = targetSize
+
+    # 计算缩放比例和填充量 --------------------------------------------------------
+    scale = min(processed_height / orig_height, processed_width / orig_width)
+
+    # 计算缩放后的新尺寸
+    new_height = int(orig_height * scale)
+    new_width = int(orig_width * scale)
+
+    # 计算填充区域 (LetterBox的填充方式)
+    pad_top = (processed_height - new_height) // 2
+    pad_left = (processed_width - new_width) // 2
+
+    # 坐标转换 ------------------------------------------------------------------
+    box_list = []
+    for box in boxes:
+        # 解包坐标值
+        x1, y1, x2, y2 = box
+
+        # 去除填充并逆缩放
+        x1 = (x1 - pad_left) / scale
+        y1 = (y1 - pad_top) / scale
+        x2 = (x2 - pad_left) / scale
+        y2 = (y2 - pad_top) / scale
+
+        # 确保坐标不超出原始图像范围
+        x1 = np.clip(x1, 0, orig_width)
+        y1 = np.clip(y1, 0, orig_height)
+        x2 = np.clip(x2, 0, orig_width)
+        y2 = np.clip(y2, 0, orig_height)
+
+        # 计算宽高
+        width = x2 - x1
+        height = y2 - y1
+
+        # 创建Box对象（使用Python原生float类型）
+        box_obj = Box(x=float(x1), y=float(y1), w=float(width), h=float(height))
+
+        box_list.append(box_obj)
+
+    return box_list

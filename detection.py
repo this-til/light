@@ -1,0 +1,442 @@
+#!/usr/bin/python3
+
+
+import logging
+import asyncio
+import cv2
+import numpy as np
+import util
+from util import Box, Color
+
+from rknn.api import RKNN
+
+OBJ_THRESH = 0.25
+NMS_THRESH = 0.45
+
+
+logger = logging.getLogger(__name__)
+
+
+class Item:
+
+    name: str
+    color: Color
+
+    def __init__(self, name: str, color: Color):
+        self.name = name
+        self.color = color
+        pass
+
+    pass
+
+
+class Cell:
+
+    item: Item
+    box: Box
+    probability: float
+
+    def __init__(self, item: Item, box: Box, probability: float):
+        self.item = item
+        self.box = box
+        self.probability = probability
+        pass
+
+    pass
+
+
+class Model:
+
+    name: str
+    itemList: list[Item]
+    path: str
+    size: tuple[int, int]
+
+    rknn: RKNN = None
+
+    def __init__(
+        self,
+        name: str,
+        itemList: list[Item],
+        path: str,
+        size: tuple[int, int] = (640, 640),
+    ):
+        self.name = name
+        self.itemList = itemList
+        self.path = path
+        self.size = size
+        pass
+
+    def load(self):
+
+        if self.rknn is not None:
+            return
+
+        self.rknn = RKNN()
+        self.rknn.load_rknn(self.path)
+
+        logger.info(f"load rknn model: {self.path}")
+
+        ret = self.rknn.init_runtime(target="rk3588")
+
+        if ret != 0:
+            logger.error(f"init runtime failed: {self.path}")
+            pass
+
+        pass
+
+    def run(self, inputImage: cv2.typing.MatLike) -> list[Cell]:
+        if self.rknn is None:
+            raise RuntimeError("Model not loaded")
+
+        h, w = inputImage.shape[:2]
+        originalSize: tuple[int, int] = (h, w)
+
+        inputImage = util.changeSize(inputImage, self.size)
+        inputImage = cv2.cvtColor(inputImage, cv2.COLOR_BGR2RGB)
+
+        return self.directRun(inputImage, originalSize)
+
+    def directRun(
+        self, inputImage: cv2.typing.MatLike, originalSize: tuple[int, int]
+    ) -> list[Cell]:
+
+        res = self.rknn.inference(inputs=[inputImage])
+
+        boxes, classes, scores = self.post_process(res)
+
+        outList: list[Cell] = []
+
+        for box, score, cl in zip(
+            util.realBox(boxes, originalSize, self.size), scores, classes
+        ):
+            outList.append(Cell(self.itemList[cl], box, score))
+            pass
+
+        return outList
+
+        pass
+
+    def post_process(self, input_data: list[np.ndarray]):
+        """
+        目标检测后处理函数，处理模型原始输出并生成最终检测结果
+
+        参数:
+            input_data: 模型输出的多分支预测结果列表，结构为：
+                        [分支1位置预测, 分支1类别预测, 分支2位置预测, 分支2类别预测,...]
+                        每个元素的shape为 (1, channels, height, width)
+
+        返回:
+            Tuple[boxes, classes, scores]:
+            - boxes: np.ndarray | None  # 检测框坐标，格式为[N,4] (x1,y1,x2,y2)
+            - classes: np.ndarray | None  # 类别ID，格式为[N,]
+            - scores: np.ndarray | None  # 置信度分数，格式为[N,]
+        """
+        # 类型注解
+        boxes: list[np.ndarray] = []
+        scores: list[np.ndarray] = []
+        classes_conf: list[np.ndarray] = []
+
+        defualt_branch: int = 3  # 模型输出分支数（不同检测尺度）
+        pair_per_branch: int = (
+            len(input_data) // defualt_branch
+        )  # 每个分支包含的数据对（位置+类别）
+
+        # 处理每个分支的输出 (位置预测 + 类别预测)
+        for i in range(defualt_branch):
+            # 处理位置预测分支 [shape: (1, 4, H, W) -> 经过box_process转换为实际坐标]
+            boxes.append(self.box_process(input_data[pair_per_branch * i]))
+
+            # 处理类别预测分支 [shape: (1, num_classes, H, W)]
+            classes_conf.append(input_data[pair_per_branch * i + 1])
+
+            # 生成占位分数 [shape: (1, 1, H, W) -> 转换为 (H*W, 1)]
+            scores.append(
+                np.ones_like(
+                    input_data[pair_per_branch * i + 1][:, :1, :, :], dtype=np.float32
+                )
+            )
+
+        def sp_flatten(_in: np.ndarray) -> np.ndarray:
+            """特征图展平处理
+            参数:
+                _in: 输入特征图 [shape: (1, C, H, W)]
+            返回:
+                展平后的特征图 [shape: (H*W, C)]
+            """
+            ch: int = _in.shape[1]
+            return _in.transpose(0, 2, 3, 1).reshape(-1, ch)
+
+        # 展平所有分支的输出
+        boxes = [sp_flatten(_v) for _v in boxes]  # 每个元素shape: (H*W,4)
+        classes_conf = [
+            sp_flatten(_v) for _v in classes_conf
+        ]  # 每个元素shape: (H*W,num_classes)
+        scores = [sp_flatten(_v) for _v in scores]  # 每个元素shape: (H*W,1)
+
+        # 合并所有分支结果
+        boxes_merged: np.ndarray = np.concatenate(boxes, axis=0)  # shape: (N,4)
+        classes_conf_merged: np.ndarray = np.concatenate(
+            classes_conf, axis=0
+        )  # shape: (N,num_classes)
+        scores_merged: np.ndarray = np.concatenate(scores, axis=0)  # shape: (N,1)
+
+        # 基于置信度阈值过滤检测框
+        filtered_boxes: np.ndarray
+        filtered_classes: np.ndarray
+        filtered_scores: np.ndarray
+        filtered_boxes, filtered_classes, filtered_scores = self.filter_boxes(
+            boxes_merged, scores_merged, classes_conf_merged
+        )
+
+        # 按类别进行非极大值抑制
+        final_boxes: list[np.ndarray] = []
+        final_classes: list[np.ndarray] = []
+        final_scores: list[np.ndarray] = []
+
+        for cls in set(filtered_classes):
+            # 获取当前类别的索引
+            cls_indices: np.ndarray = np.where(filtered_classes == cls)[0]
+
+            # 提取当前类别的检测结果
+            cls_boxes: np.ndarray = filtered_boxes[cls_indices]  # shape: (K,4)
+            cls_scores: np.ndarray = filtered_scores[cls_indices]  # shape: (K,)
+
+            # 执行NMS
+            keep_indices: np.ndarray = self.nms_boxes(cls_boxes, cls_scores)
+
+            if keep_indices.size > 0:
+                final_boxes.append(cls_boxes[keep_indices])
+                final_classes.append(np.full(keep_indices.shape[0], cls))
+                final_scores.append(cls_scores[keep_indices])
+
+        # 合并最终结果
+        if not final_boxes:
+            return None, None, None
+
+        return (
+            np.concatenate(final_boxes),  # shape: (M,4)
+            np.concatenate(final_classes),  # shape: (M,)
+            np.concatenate(final_scores),  # shape: (M,)
+        )
+
+    def filter_boxes(self, boxes, box_confidences, box_class_probs):
+        """Filter boxes with object threshold."""
+        box_confidences = box_confidences.reshape(-1)
+
+        class_max_score = np.max(box_class_probs, axis=-1)
+        classes = np.argmax(box_class_probs, axis=-1)
+
+        _class_pos = np.where(class_max_score * box_confidences >= OBJ_THRESH)
+        scores = (class_max_score * box_confidences)[_class_pos]
+
+        boxes = boxes[_class_pos]
+        classes = classes[_class_pos]
+
+        return boxes, classes, scores
+
+    def nms_boxes(self, boxes, scores):
+        """Suppress non-maximal boxes.
+        # Returns
+            keep: ndarray, index of effective boxes.
+        """
+        x = boxes[:, 0]
+        y = boxes[:, 1]
+        w = boxes[:, 2] - boxes[:, 0]
+        h = boxes[:, 3] - boxes[:, 1]
+
+        areas = w * h
+        order = scores.argsort()[::-1]
+
+        keep = []
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+
+            xx1 = np.maximum(x[i], x[order[1:]])
+            yy1 = np.maximum(y[i], y[order[1:]])
+            xx2 = np.minimum(x[i] + w[i], x[order[1:]] + w[order[1:]])
+            yy2 = np.minimum(y[i] + h[i], y[order[1:]] + h[order[1:]])
+
+            w1 = np.maximum(0.0, xx2 - xx1 + 0.00001)
+            h1 = np.maximum(0.0, yy2 - yy1 + 0.00001)
+            inter = w1 * h1
+
+            ovr = inter / (areas[i] + areas[order[1:]] - inter)
+            inds = np.where(ovr <= NMS_THRESH)[0]
+            order = order[inds + 1]
+        keep = np.array(keep)
+        return keep
+
+    def dfl(self, position):
+        # Distribution Focal Loss (DFL)
+        import torch
+
+        x = torch.tensor(position)
+        n, c, h, w = x.shape
+        p_num = 4
+        mc = c // p_num
+        y = x.reshape(n, p_num, mc, h, w)
+        y = y.softmax(2)
+        acc_metrix = torch.tensor(range(mc)).float().reshape(1, 1, mc, 1, 1)
+        y = (y * acc_metrix).sum(2)
+        return y.numpy()
+
+    def box_process(self, position):
+        grid_h, grid_w = position.shape[2:4]
+        col, row = np.meshgrid(np.arange(0, grid_w), np.arange(0, grid_h))
+        col = col.reshape(1, 1, grid_h, grid_w)
+        row = row.reshape(1, 1, grid_h, grid_w)
+        grid = np.concatenate((col, row), axis=1)
+        stride = np.array([self.size[1] // grid_h, self.size[0] // grid_w]).reshape(
+            1, 2, 1, 1
+        )
+
+        position = self.dfl(position)
+        box_xy = grid + 0.5 - position[:, 0:2, :, :]
+        box_xy2 = grid + 0.5 + position[:, 2:4, :, :]
+        xyxy = np.concatenate((box_xy * stride, box_xy2 * stride), axis=1)
+
+        return xyxy
+
+
+class Result:
+
+    inputImage: cv2.typing.MatLike = None
+    outputImage: cv2.typing.MatLike | None = None
+
+    cellMap: dict[Model, list[Cell]] = {}
+
+    def __init__(
+        self, inputImage: cv2.typing.MatLike, cellMap: dict[Model, list[Cell]]
+    ):
+        self.inputImage = inputImage
+        self.outputImage = None
+        self.cellMap = cellMap
+
+    def drawOutputImage(self) -> cv2.typing.MatLike:
+        """
+        在outputImage上绘制所有检测框和标签
+        """
+        if self.outputImage is None:
+            # 深拷贝原始图像，避免修改原图
+            self.outputImage = self.inputImage.copy()
+
+            # 遍历所有模型及其检测结果
+            for model, cells in self.cellMap.items():
+                for cell in cells:
+                    # 获取检测框坐标 (转换为整数)
+                    x = int(cell.box.x)
+                    y = int(cell.box.y)
+                    w = int(cell.box.w)
+                    h = int(cell.box.h)
+
+                    # 计算矩形坐标 (OpenCV需要左上角和右下角)
+                    x1, y1 = x, y
+                    x2, y2 = x + w, y + h
+
+                    # 获取颜色 (BGR格式)
+                    color = (
+                        cell.item.color.b,  # OpenCV使用BGR通道顺序
+                        cell.item.color.g,
+                        cell.item.color.r,
+                    )
+
+                    # 绘制矩形框
+                    cv2.rectangle(
+                        img=self.outputImage,
+                        pt1=(x1, y1),
+                        pt2=(x2, y2),
+                        color=color,
+                        thickness=2,  # 线宽
+                    )
+
+                    # 构建标签文本 (类别名 + 置信度)
+                    label = f"{cell.item.name} {cell.probability:.2f}"
+
+                    # 计算文本位置 (左上角偏移)
+                    text_x = x1 + 5
+                    text_y = y1 - 10 if y1 > 20 else y1 + 20  # 避免超出图像顶部
+
+                    # 绘制文本背景
+                    (text_w, text_h), _ = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1  # 字体大小  # 线宽
+                    )
+                    cv2.rectangle(
+                        img=self.outputImage,
+                        pt1=(x1, y1 - text_h - 5),
+                        pt2=(x1 + text_w + 5, y1),
+                        color=color,
+                        thickness=cv2.FILLED,  # 填充模式
+                    )
+
+                    # 绘制文本
+                    cv2.putText(
+                        img=self.outputImage,
+                        text=label,
+                        org=(text_x, text_y),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.5,  # 字体缩放系数
+                        color=(
+                            (0, 0, 0) if sum(color) > 382 else (255, 255, 255)
+                        ),  # 自动选择文本颜色
+                        thickness=1,
+                        lineType=cv2.LINE_AA,
+                    )
+
+        return self.outputImage
+
+
+accident = Item("accident", Color(255, 0, 0))
+car_accident_model = Model("car_accident", [accident], "light/model/car_accident.rknn")
+
+
+fall_down = Item("fall down", Color(255, 150, 51))
+stand_person = Item("stand person", Color(100, 255, 100))
+fall_down_model = Model(
+    "fall_down", [fall_down, stand_person], "light/model/fall_down.rknn"
+)
+
+modelMap = {
+    car_accident_model.name: car_accident_model,
+    fall_down_model.name: fall_down_model,
+}
+
+
+def runDetection(
+    inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]
+) -> Result:
+
+    h, w = inputImage.shape[:2]
+    originalSize: tuple[int, int] = (h, w)
+
+    cellMap: map[Model, list[Cell]] = {}
+
+    sizeMap: dict[tuple[int, int], list[Model]] = {}
+
+    for m in useModel:
+        if sizeMap[m.size] is None:
+            sizeMap[m.size] = []
+
+        sizeMap[m.size].append(m)
+
+    for size, modelList in sizeMap.items():
+        _inputImage = util.changeSize(inputImage, size)
+        _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
+
+        for m in modelList:
+            cellRes: list[Cell] = m.directRun(_inputImage, originalSize)
+            cellMap[m] = cellRes
+
+    return Result(inputImage, cellMap)
+
+
+async def initDetection():
+    for name, model in modelMap.items():
+        model.load()
+
+    pass
+
+
+async def releaseDetection():
+    pass
