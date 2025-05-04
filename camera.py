@@ -4,6 +4,8 @@ import logging
 import asyncio
 import numpy as np
 import cv2
+import detection
+import time
 from asyncio.subprocess import PIPE
 from util import Broadcaster
 
@@ -229,17 +231,22 @@ async def handleFrames():
     framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
     await source.subscribe(framesQueue)
 
+    
     while True:
 
         try:
 
             sourceFrame = await framesQueue.get()
-            outFrame = sourceFrame.copy()
-
-            # TODO
-
-            await out.publish(outFrame)
-
+            
+            start_time = time.perf_counter()
+            
+            result = detection.runDetection(sourceFrame, [detection.fall_down_model])
+            
+            end_time = time.perf_counter()
+            duration_ms = (end_time - start_time) * 1000
+            logger.info(f"runDetection 耗时: {duration_ms:.3f}ms")
+            await out.publish(result.drawOutputImage())
+            
         except asyncio.CancelledError:
             raise
         except Exception as e:

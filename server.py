@@ -34,12 +34,6 @@ async def runServer(config: ServerConfig = ServerConfig()):
     pass
     
 
-
-#async def initServer(config: ServerConfig = ServerConfig()):
-#    asyncio.create_task(runServer(config))
-#    logger.info(f"🚀 服务器已启动在 {config.host}:{config.port}")
-
-
 async def releaseServer():
     app.shutdown()
     pass

@@ -290,7 +290,8 @@ def realBox(
         boxes: np.ndarray, 形状为(N,4)的数组，每行表示一个检测框 (x1,y1,x2,y2)
                x1,y1为左上角坐标，x2,y2为右下角坐标（基于预处理后的图像坐标系）
         originalImageSize: tuple[float, float], 原始图像尺寸 (height, width)
-
+        targetSize: tuple[float, float], 识别时的目标尺寸 (height, width)
+        
     返回:
         List[Box]: 转换后的Box对象列表
     """

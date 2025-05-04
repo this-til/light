@@ -107,122 +107,89 @@ class Model:
 
         outList: list[Cell] = []
 
-        for box, score, cl in zip(
-            util.realBox(boxes, originalSize, self.size), scores, classes
-        ):
-            outList.append(Cell(self.itemList[cl], box, score))
-            pass
+        if boxes is not None:
+            for box, score, cl in zip(
+                util.realBox(boxes, originalSize, self.size), scores, classes
+            ):
+                outList.append(Cell(self.itemList[cl], box, score))
+                pass
 
         return outList
 
-        pass
-
-    def post_process(self, input_data: list[np.ndarray]):
-        """
-        目标检测后处理函数，处理模型原始输出并生成最终检测结果
-
-        参数:
-            input_data: 模型输出的多分支预测结果列表，结构为：
-                        [分支1位置预测, 分支1类别预测, 分支2位置预测, 分支2类别预测,...]
-                        每个元素的shape为 (1, channels, height, width)
-
-        返回:
-            Tuple[boxes, classes, scores]:
-            - boxes: np.ndarray | None  # 检测框坐标，格式为[N,4] (x1,y1,x2,y2)
-            - classes: np.ndarray | None  # 类别ID，格式为[N,]
-            - scores: np.ndarray | None  # 置信度分数，格式为[N,]
-        """
-        # 类型注解
-        boxes: list[np.ndarray] = []
-        scores: list[np.ndarray] = []
-        classes_conf: list[np.ndarray] = []
-
-        defualt_branch: int = 3  # 模型输出分支数（不同检测尺度）
-        pair_per_branch: int = (
-            len(input_data) // defualt_branch
-        )  # 每个分支包含的数据对（位置+类别）
-
-        # 处理每个分支的输出 (位置预测 + 类别预测)
+    def post_process(self, input_data):
+        boxes, scores, classes_conf = [], [], []
+        defualt_branch = 3
+        pair_per_branch = len(input_data) // defualt_branch
+        # Python 忽略 score_sum 输出
         for i in range(defualt_branch):
-            # 处理位置预测分支 [shape: (1, 4, H, W) -> 经过box_process转换为实际坐标]
             boxes.append(self.box_process(input_data[pair_per_branch * i]))
-
-            # 处理类别预测分支 [shape: (1, num_classes, H, W)]
             classes_conf.append(input_data[pair_per_branch * i + 1])
-
-            # 生成占位分数 [shape: (1, 1, H, W) -> 转换为 (H*W, 1)]
             scores.append(
                 np.ones_like(
                     input_data[pair_per_branch * i + 1][:, :1, :, :], dtype=np.float32
                 )
             )
 
-        def sp_flatten(_in: np.ndarray) -> np.ndarray:
-            """特征图展平处理
-            参数:
-                _in: 输入特征图 [shape: (1, C, H, W)]
-            返回:
-                展平后的特征图 [shape: (H*W, C)]
-            """
-            ch: int = _in.shape[1]
-            return _in.transpose(0, 2, 3, 1).reshape(-1, ch)
+        def sp_flatten(_in):
+            ch = _in.shape[1]
+            _in = _in.transpose(0, 2, 3, 1)
+            return _in.reshape(-1, ch)
 
-        # 展平所有分支的输出
-        boxes = [sp_flatten(_v) for _v in boxes]  # 每个元素shape: (H*W,4)
-        classes_conf = [
-            sp_flatten(_v) for _v in classes_conf
-        ]  # 每个元素shape: (H*W,num_classes)
-        scores = [sp_flatten(_v) for _v in scores]  # 每个元素shape: (H*W,1)
+        boxes = [sp_flatten(_v) for _v in boxes]
+        classes_conf = [sp_flatten(_v) for _v in classes_conf]
+        scores = [sp_flatten(_v) for _v in scores]
 
-        # 合并所有分支结果
-        boxes_merged: np.ndarray = np.concatenate(boxes, axis=0)  # shape: (N,4)
-        classes_conf_merged: np.ndarray = np.concatenate(
-            classes_conf, axis=0
-        )  # shape: (N,num_classes)
-        scores_merged: np.ndarray = np.concatenate(scores, axis=0)  # shape: (N,1)
+        boxes = np.concatenate(boxes)
+        classes_conf = np.concatenate(classes_conf)
+        scores = np.concatenate(scores)
 
-        # 基于置信度阈值过滤检测框
-        filtered_boxes: np.ndarray
-        filtered_classes: np.ndarray
-        filtered_scores: np.ndarray
-        filtered_boxes, filtered_classes, filtered_scores = self.filter_boxes(
-            boxes_merged, scores_merged, classes_conf_merged
-        )
+        # filter according to threshold
+        boxes, classes, scores = self.filter_boxes(boxes, scores, classes_conf)
 
-        # 按类别进行非极大值抑制
-        final_boxes: list[np.ndarray] = []
-        final_classes: list[np.ndarray] = []
-        final_scores: list[np.ndarray] = []
+        # nms
+        nboxes, nclasses, nscores = [], [], []
+        for c in set(classes):
+            inds = np.where(classes == c)
+            b = boxes[inds]
+            c = classes[inds]
+            s = scores[inds]
+            keep = self.nms_boxes(b, s)
 
-        for cls in set(filtered_classes):
-            # 获取当前类别的索引
-            cls_indices: np.ndarray = np.where(filtered_classes == cls)[0]
+            if len(keep) != 0:
+                nboxes.append(b[keep])
+                nclasses.append(c[keep])
+                nscores.append(s[keep])
 
-            # 提取当前类别的检测结果
-            cls_boxes: np.ndarray = filtered_boxes[cls_indices]  # shape: (K,4)
-            cls_scores: np.ndarray = filtered_scores[cls_indices]  # shape: (K,)
-
-            # 执行NMS
-            keep_indices: np.ndarray = self.nms_boxes(cls_boxes, cls_scores)
-
-            if keep_indices.size > 0:
-                final_boxes.append(cls_boxes[keep_indices])
-                final_classes.append(np.full(keep_indices.shape[0], cls))
-                final_scores.append(cls_scores[keep_indices])
-
-        # 合并最终结果
-        if not final_boxes:
+        if not nclasses and not nscores:
             return None, None, None
 
-        return (
-            np.concatenate(final_boxes),  # shape: (M,4)
-            np.concatenate(final_classes),  # shape: (M,)
-            np.concatenate(final_scores),  # shape: (M,)
+        boxes = np.concatenate(nboxes)
+        classes = np.concatenate(nclasses)
+        scores = np.concatenate(nscores)
+
+        return boxes, classes, scores
+
+    def box_process(self, position):
+        grid_h, grid_w = position.shape[2:4]
+        col, row = np.meshgrid(np.arange(0, grid_w), np.arange(0, grid_h))
+        col = col.reshape(1, 1, grid_h, grid_w)
+        row = row.reshape(1, 1, grid_h, grid_w)
+        grid = np.concatenate((col, row), axis=1)
+        stride = np.array([self.size[1] // grid_h, self.size[0] // grid_w]).reshape(
+            1, 2, 1, 1
         )
+
+        position = self.dfl(position)
+        box_xy = grid + 0.5 - position[:, 0:2, :, :]
+        box_xy2 = grid + 0.5 + position[:, 2:4, :, :]
+        xyxy = np.concatenate((box_xy * stride, box_xy2 * stride), axis=1)
+
+        return xyxy
 
     def filter_boxes(self, boxes, box_confidences, box_class_probs):
         """Filter boxes with object threshold."""
         box_confidences = box_confidences.reshape(-1)
+        candidate, class_num = box_class_probs.shape
 
         class_max_score = np.max(box_class_probs, axis=-1)
         classes = np.argmax(box_class_probs, axis=-1)
@@ -281,23 +248,6 @@ class Model:
         acc_metrix = torch.tensor(range(mc)).float().reshape(1, 1, mc, 1, 1)
         y = (y * acc_metrix).sum(2)
         return y.numpy()
-
-    def box_process(self, position):
-        grid_h, grid_w = position.shape[2:4]
-        col, row = np.meshgrid(np.arange(0, grid_w), np.arange(0, grid_h))
-        col = col.reshape(1, 1, grid_h, grid_w)
-        row = row.reshape(1, 1, grid_h, grid_w)
-        grid = np.concatenate((col, row), axis=1)
-        stride = np.array([self.size[1] // grid_h, self.size[0] // grid_w]).reshape(
-            1, 2, 1, 1
-        )
-
-        position = self.dfl(position)
-        box_xy = grid + 0.5 - position[:, 0:2, :, :]
-        box_xy2 = grid + 0.5 + position[:, 2:4, :, :]
-        xyxy = np.concatenate((box_xy * stride, box_xy2 * stride), axis=1)
-
-        return xyxy
 
 
 class Result:
@@ -415,7 +365,8 @@ def runDetection(
     sizeMap: dict[tuple[int, int], list[Model]] = {}
 
     for m in useModel:
-        if sizeMap[m.size] is None:
+
+        if m.size not in sizeMap:
             sizeMap[m.size] = []
 
         sizeMap[m.size].append(m)
