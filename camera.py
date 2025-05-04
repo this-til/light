@@ -23,6 +23,7 @@ cameraRtspUrl = f"rtsp://{user}:{password}@{ip}:{rtsp_port}/Streaming/Channels/1
 
 source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
 out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
 cap: cv2.VideoCapture = None
 
@@ -226,32 +227,85 @@ async def pushFrames():
             await asyncio.sleep(5)
 
 
+# async def handleFrames():
+#
+#    framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
+#    await source.subscribe(framesQueue)
+#
+#    while True:
+#
+#        try:
+#
+#            sourceFrame = await framesQueue.get()
+#
+#            async def runDetection(sourceFrame, models):
+#                result = await asyncio.get_event_loop().run_in_executor(
+#                    None, detection.runDetection, sourceFrame, models
+#                )
+#                await out.publish(await result.drawOutputImageAsunc())
+#
+#            asyncio.create_task(runDetection(sourceFrame, [detection.fall_down_model]))
+#
+#        except asyncio.CancelledError:
+#            raise
+#        except Exception as e:
+#            logger.exception(f"处理帧时发生异常: {str(e)}")
+#        pass
+#
+
+
 async def handleFrames():
 
     framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
     await source.subscribe(framesQueue)
 
-    
-    while True:
+    res: detection.Result = None
+    task: asyncio.Task = None
 
+    while True:
         try:
 
             sourceFrame = await framesQueue.get()
-            
-            start_time = time.perf_counter()
-            
-            result = detection.runDetection(sourceFrame, [detection.fall_down_model])
-            
-            end_time = time.perf_counter()
-            duration_ms = (end_time - start_time) * 1000
-            logger.info(f"runDetection 耗时: {duration_ms:.3f}ms")
-            await out.publish(result.drawOutputImage())
-            
+
+            if res is None:
+                res = detection.Result(sourceFrame, {})
+
+            if task is None or task.done():
+
+                if task is not None:
+                    res = task.result()
+                    await identifyKeyframe.publish(res)
+
+                def _runDetection(inputImage, useModel):
+                    start_time = time.perf_counter()
+                    res = detection.runDetection(inputImage, useModel)
+                    end_time = time.perf_counter()
+                    duration_ms = (end_time - start_time) * 1000
+                    logger.info(f"inference 耗时: {duration_ms:.3f}ms")
+                    return res
+
+                task = asyncio.get_event_loop().run_in_executor(
+                    None,
+                    _runDetection,
+                    sourceFrame,
+                    [detection.fall_down_model],
+                )
+
+            _res = detection.Result(sourceFrame, res.cellMap)
+            await out.publish(await _res.drawOutputImageAsunc())
+
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.exception(f"处理帧时发生异常: {str(e)}")
+
+            res = None
+            if task is not None:
+                task.cancel()
+                task = None
         pass
+
+    pass
 
 
 async def initCamera():

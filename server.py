@@ -16,7 +16,7 @@ app = cors(app, allow_origin="*")
 class ServerConfig:
     host = "0.0.0.0"
     port = 8000
-    workers = 3
+    workers = 2
     debug = True
     
 async def runServer(config: ServerConfig = ServerConfig()):

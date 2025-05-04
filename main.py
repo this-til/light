@@ -28,7 +28,7 @@ async def main():
     def _signal_handler():
         nonlocal active
         active = False
-        logger.debug("捕获到 Ctrl+C，开始优雅关闭...")
+        logger.debug("捕获到 Ctrl+C,开始优雅关闭...")
 
     # 注册 SIGINT 处理器
     loop.add_signal_handler(signal.SIGINT, _signal_handler)

@@ -6,15 +6,19 @@ import asyncio
 import cv2
 import numpy as np
 import util
+import threading
+import time
 from util import Box, Color
 
 from rknn.api import RKNN
 
-OBJ_THRESH = 0.25
-NMS_THRESH = 0.45
+OBJ_THRESH = 0.5
+NMS_THRESH = 0.5
 
 
 logger = logging.getLogger(__name__)
+
+inferenceLock = threading.Lock()
 
 
 class Item:
@@ -77,7 +81,9 @@ class Model:
 
         logger.info(f"load rknn model: {self.path}")
 
-        ret = self.rknn.init_runtime(target="rk3588")
+        ret = self.rknn.init_runtime(
+            target="rk3588", fallback_prior_device="gpu", core_mask=RKNN.NPU_CORE_ALL
+        )
 
         if ret != 0:
             logger.error(f"init runtime failed: {self.path}")
@@ -101,7 +107,15 @@ class Model:
         self, inputImage: cv2.typing.MatLike, originalSize: tuple[int, int]
     ) -> list[Cell]:
 
-        res = self.rknn.inference(inputs=[inputImage])
+        with inferenceLock:
+            try:
+                res = self.rknn.inference(inputs=[inputImage])
+          
+            except Exception as e:
+                logger.exception(
+                    f"thie {self.path} model inference raise Exception: {str(e)} "
+                )
+                return []
 
         boxes, classes, scores = self.post_process(res)
 
@@ -263,6 +277,13 @@ class Result:
         self.inputImage = inputImage
         self.outputImage = None
         self.cellMap = cellMap
+
+    async def drawOutputImageAsunc(self) -> cv2.typing.MatLike:
+        if self.outputImage is None:
+            return await asyncio.get_event_loop().run_in_executor(
+                None, self.drawOutputImage
+            )
+        return self.outputImage
 
     def drawOutputImage(self) -> cv2.typing.MatLike:
         """
