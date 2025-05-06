@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 from quart import Quart, jsonify, request
 import asyncio
 from hypercorn.asyncio import serve
@@ -35,7 +37,7 @@ async def runServer(config: ServerConfig = ServerConfig()):
     
 
 async def releaseServer():
-    app.shutdown()
+    await app.shutdown()
     pass
 
 

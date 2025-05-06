@@ -9,6 +9,7 @@ import signal
 import util
 import uart
 import camera
+import orbbec_camera
 import detection
 
 logging.basicConfig(
@@ -38,6 +39,7 @@ async def main():
         await configure.initConfigure()
         await uart.initUart()
         await camera.initCamera()
+        await orbbec_camera.initOrbbecCamera()
         # await server.initServer()
         await device.initDevice()
         await detection.initDetection()
@@ -54,6 +56,7 @@ async def main():
         await device.releaseDevice()
         await server.releaseServer()
         await camera.releaseCamera()
+        await orbbec_camera.releaseOrbbecCamera()
         await uart.releaseUart()
         await configure.releaseConfigure()
 

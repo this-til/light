@@ -266,7 +266,7 @@ class Model:
 
 class Result:
 
-    inputImage: cv2.typing.MatLike = None
+    inputImage: cv2.typing.MatLike | None = None
     outputImage: cv2.typing.MatLike | None = None
 
     cellMap: dict[Model, list[Cell]] = {}
@@ -373,6 +373,7 @@ modelMap = {
     fall_down_model.name: fall_down_model,
 }
 
+models = modelMap.values()
 
 def runDetection(
     inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]

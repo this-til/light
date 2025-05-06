@@ -3,10 +3,13 @@
 import asyncio
 import logging
 import json
-from typing import Generic, TypeVar, Optional, Any
+from typing import Generic, TypeVar, Optional, Any, Union
 import re
 import cv2
 import numpy as np
+
+from pyorbbecsdk import FormatConvertFilter, VideoFrame, OBFormat, OBConvertFormat
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,6 @@ class Color:
 
         pass
 
-
 T = TypeVar("T")  # 定义泛型类型
 
 
@@ -55,9 +57,10 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
 
     async def subscribe(
         self, queue: asyncio.Queue[T]
-    ) -> None:  # 订阅的队列类型与泛型一致
+    ) -> asyncio.Queue[T]:  # 订阅的队列类型与泛型一致
         async with self.lock:
             self.queues.append(queue)
+        return queue
 
     async def unsubscribe(self, queue: asyncio.Queue[T]) -> None:
         async with self.lock:
@@ -70,6 +73,138 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
                     q.get_nowait()
                 await q.put(item)
 
+
+class FFmpegPush:
+
+    pushProcess: asyncio.subprocess.Process | None
+
+    command: list[str]
+
+    width: int
+    height: int
+    fps: int
+    pushRtspUrl: str
+    framesQueue: asyncio.Queue[cv2.typing.MatLike]
+
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        fps: int,
+        pushRtspUrl: str,
+        framesQueue: asyncio.Queue[cv2.typing.MatLike],
+        logTag: str,
+    ):
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.pushRtspUrl = pushRtspUrl
+        self.framesQueue = framesQueue
+        self.logger = logging.getLogger(logTag)
+
+        self.command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            f"{fps}",
+            "-i",
+            "-",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-f",
+            "rtsp",
+            "-rtsp_transport",
+            "tcp",
+            pushRtspUrl,
+        ]
+
+    async def pushFrames(self):
+        while True:  # 无限循环尝试重启FFmpeg进程
+            try:
+                logger.info("正在启动FFmpeg推流进程...")
+                # 启动FFmpeg进程
+                pushProcess = await asyncio.create_subprocess_exec(
+                    *self.command,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
+                # 创建一个任务来监控进程的输出和错误
+                while True:  # 主循环处理帧
+                    frame = await self.framesQueue.get()
+
+                    # 检查帧尺寸是否匹配预期
+                    frame_height, frame_width = frame.shape[:2]
+                    if (frame_width, frame_height) != (self.width, self.height):
+                        self.logger.warning(
+                            f"帧尺寸不匹配(期望{self.width}x{self.height}，实际{frame_width}x{frame_height})，正在调整尺寸..."
+                        )
+                        try:
+                            # 使用双线性插值调整尺寸（可根据需求更换插值算法）
+                            frame = cv2.resize(
+                                frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR
+                            )
+                        except Exception as resize_err:
+                            self.logger.error(
+                                f"调整帧尺寸失败: {str(resize_err)}，跳过该帧"
+                            )
+                            continue
+
+                    # 将帧转换为字节流
+                    data = frame.tobytes()
+
+                    # 写入FFmpeg进程的输入管道
+                    try:
+                        if pushProcess.stdin is not None:
+                            pushProcess.stdin.write(data)
+                            await pushProcess.stdin.drain()  # 确保数据已写入
+                    except (BrokenPipeError, ConnectionResetError) as e:
+                        self.logger.error(f"写入FFmpeg进程失败: {e}")
+                        raise  # 触发外层异常处理重新启动进程
+
+                    # 检查FFmpeg进程是否仍在运行
+                    returncode = pushProcess.returncode
+                    if returncode is not None:
+                        self.logger.error(
+                            f"FFmpeg进程异常退出(代码{returncode})，正在重启..."
+                        )
+                        raise Exception("FFmpeg进程意外终止")
+
+            except asyncio.CancelledError:
+                self.logger.info("推流任务被取消，执行清理...")
+                await self.releaseProcess()
+                break
+
+            except Exception as e:
+                self.logger.error(f"推流任务异常: {str(e)}")
+                await self.releaseProcess()
+                self.logger.info(f"5秒后重启")
+                await asyncio.sleep(5)
+
+    async def releaseProcess(self):
+
+        if self.pushProcess is not None and self.pushProcess.stdin is not None:
+            self.pushProcess.stdin.close()
+            await self.pushProcess.stdin.wait_closed()
+
+            try:
+                await asyncio.wait_for(self.pushProcess.wait(), timeout=2)
+            except asyncio.TimeoutError:
+                self.pushProcess.kill()
+                await self.pushProcess.wait()
+
+            self.pushProcess = None
 
 def getAllTasks() -> list[asyncio.Task]:
     """
@@ -340,3 +475,108 @@ def realBox(
         box_list.append(box_obj)
 
     return box_list
+
+
+def yuyv_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    yuyv = frame.reshape((height, width, 2))
+    bgr_image = cv2.cvtColor(yuyv, cv2.COLOR_YUV2BGR_YUY2)
+    return bgr_image
+
+
+def uyvy_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    uyvy = frame.reshape((height, width, 2))
+    bgr_image = cv2.cvtColor(uyvy, cv2.COLOR_YUV2BGR_UYVY)
+    return bgr_image
+
+
+def i420_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    y = frame[0:height, :]
+    u = frame[height:height + height // 4].reshape(height // 2, width // 2)
+    v = frame[height + height // 4:].reshape(height // 2, width // 2)
+    yuv_image = cv2.merge([y, u, v])
+    bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_I420)
+    return bgr_image
+
+
+def nv21_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    y = frame[0:height, :]
+    uv = frame[height:height + height // 2].reshape(height // 2, width)
+    yuv_image = cv2.merge([y, uv])
+    bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_NV21)
+    return bgr_image
+
+
+def nv12_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
+    y = frame[0:height, :]
+    uv = frame[height:height + height // 2].reshape(height // 2, width)
+    yuv_image = cv2.merge([y, uv])
+    bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_NV12)
+    return bgr_image
+
+
+def determine_convert_format(frame: VideoFrame):
+    if frame.get_format() == OBFormat.I420:
+        return OBConvertFormat.I420_TO_RGB888
+    elif frame.get_format() == OBFormat.MJPG:
+        return OBConvertFormat.MJPG_TO_RGB888
+    elif frame.get_format() == OBFormat.YUYV:
+        return OBConvertFormat.YUYV_TO_RGB888
+    elif frame.get_format() == OBFormat.NV21:
+        return OBConvertFormat.NV21_TO_RGB888
+    elif frame.get_format() == OBFormat.NV12:
+        return OBConvertFormat.NV12_TO_RGB888
+    elif frame.get_format() == OBFormat.UYVY:
+        return OBConvertFormat.UYVY_TO_RGB888
+    else:
+        return None
+
+
+def frame_to_rgb_frame(frame: VideoFrame) -> Union[Optional[VideoFrame], Any]:
+    if frame.get_format() == OBFormat.RGB:
+        return frame
+    convert_format = determine_convert_format(frame)
+    if convert_format is None:
+        print("Unsupported format")
+        return None
+    print("covert format: {}".format(convert_format))
+    convert_filter = FormatConvertFilter()
+    convert_filter.set_format_convert_format(convert_format)
+    rgb_frame = convert_filter.process(frame)
+    if rgb_frame is None:
+        print("Convert {} to RGB failed".format(frame.get_format()))
+    return rgb_frame
+
+
+def frame_to_bgr_image(frame: VideoFrame) -> Union[Optional[np.array], Any]:
+    width = frame.get_width()
+    height = frame.get_height()
+    color_format = frame.get_format()
+    data = np.asanyarray(frame.get_data())
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+    if color_format == OBFormat.RGB:
+        image = np.resize(data, (height, width, 3))
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    elif color_format == OBFormat.BGR:
+        image = np.resize(data, (height, width, 3))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    elif color_format == OBFormat.YUYV:
+        image = np.resize(data, (height, width, 2))
+        image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_YUYV)
+    elif color_format == OBFormat.MJPG:
+        image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    elif color_format == OBFormat.I420:
+        image = i420_to_bgr(data, width, height)
+        return image
+    elif color_format == OBFormat.NV12:
+        image = nv12_to_bgr(data, width, height)
+        return image
+    elif color_format == OBFormat.NV21:
+        image = nv21_to_bgr(data, width, height)
+        return image
+    elif color_format == OBFormat.UYVY:
+        image = np.resize(data, (height, width, 2))
+        image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_UYVY)
+    else:
+        print("Unsupported color format: {}".format(color_format))
+        return None
+    return image

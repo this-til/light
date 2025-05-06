@@ -7,7 +7,7 @@ import cv2
 import detection
 import time
 from asyncio.subprocess import PIPE
-from util import Broadcaster
+from util import Broadcaster, FFmpegPush
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,9 @@ source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
 out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
 identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
-cap: cv2.VideoCapture = None
+cap: cv2.VideoCapture
 
-pushRtspUrl = "rtsp://localhost:8554/channels001"
-
-pushProcess: asyncio.subprocess.Process = None
+pushRtspUrl = "rtsp://localhost:8554/stream1"
 
 
 async def releaseCap():
@@ -37,30 +35,6 @@ async def releaseCap():
     if cap and cap.isOpened():
         await asyncio.get_event_loop().run_in_executor(None, cap.release)
     cap = None
-    pass
-
-
-async def releaseProcess():
-    global pushProcess
-
-    if pushProcess is None:
-        return
-
-    pushProcess.stdin.close()
-
-    if pushProcess.stdin.is_closing():
-        return
-
-    await pushProcess.stdin.wait_closed()
-
-    try:
-        await asyncio.wait_for(pushProcess.wait(), timeout=2)
-    except asyncio.TimeoutError:
-        pushProcess.kill()
-        await pushProcess.wait()
-
-    pushProcess = None
-
     pass
 
 
@@ -127,131 +101,15 @@ async def renderFrames():
 
 
 async def pushFrames():
-    global pushProcess  # 如果需要访问全局变量，记得声明
-    command = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "bgr24",
-        "-s",
-        f"{width}x{height}",
-        "-r",
-        f"{fps}",
-        "-i",
-        "-",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-pix_fmt",
-        "yuv420p",
-        "-f",
-        "rtsp",
-        "-rtsp_transport",
-        "tcp",
+    await FFmpegPush(
+        width,
+        height,
+        fps,
         pushRtspUrl,
-    ]
-
-    framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-    await out.subscribe(framesQueue)
-
-    while True:  # 无限循环尝试重启FFmpeg进程
-        try:
-            logger.info("正在启动FFmpeg推流进程...")
-            # 启动FFmpeg进程
-            pushProcess = await asyncio.create_subprocess_exec(
-                *command,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            # 创建一个任务来监控进程的输出和错误
-            stderr_reader = asyncio.create_task(pushProcess.stderr.read())
-            stdout_reader = asyncio.create_task(pushProcess.stdout.read())
-
-            while True:  # 主循环处理帧
-                frame = await framesQueue.get()
-
-                # 检查帧尺寸是否匹配预期
-                frame_height, frame_width = frame.shape[:2]
-                if (frame_width, frame_height) != (width, height):
-                    logger.warning(
-                        f"帧尺寸不匹配(期望{width}x{height}，实际{frame_width}x{frame_height})，正在调整尺寸..."
-                    )
-                    try:
-                        # 使用双线性插值调整尺寸（可根据需求更换插值算法）
-                        frame = cv2.resize(
-                            frame, (width, height), interpolation=cv2.INTER_LINEAR
-                        )
-                    except Exception as resize_err:
-                        logger.error(f"调整帧尺寸失败: {str(resize_err)}，跳过该帧")
-                        continue
-
-                # 将帧转换为字节流
-                data = frame.tobytes()
-
-                # 写入FFmpeg进程的输入管道
-                try:
-                    pushProcess.stdin.write(data)
-                    await pushProcess.stdin.drain()  # 确保数据已写入
-                except (BrokenPipeError, ConnectionResetError) as e:
-                    logger.error(f"写入FFmpeg进程失败: {e}")
-                    raise  # 触发外层异常处理重新启动进程
-
-                # 检查FFmpeg进程是否仍在运行
-                returncode = pushProcess.returncode
-                if returncode is not None:
-                    logger.error(f"FFmpeg进程异常退出(代码{returncode})，正在重启...")
-                    raise Exception("FFmpeg进程意外终止")
-
-        except asyncio.CancelledError:
-            logger.info("推流任务被取消，执行清理...")
-            await releaseProcess()
-            break
-
-        except Exception as e:
-            logger.error(f"推流任务异常: {str(e)}")
-            # 清理资源
-            await releaseProcess()
-            # 读取并记录FFmpeg的错误输出
-            if not stderr_reader.done():
-                stderr = await stderr_reader
-                logger.error(f"FFmpeg错误输出: {stderr.decode()}")
-            if not stdout_reader.done():
-                stdout = await stdout_reader
-                logger.debug(f"FFmpeg标准输出: {stdout.decode()}")
-            # 重试前等待一段时间
-            await asyncio.sleep(5)
-
-
-# async def handleFrames():
-#
-#    framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-#    await source.subscribe(framesQueue)
-#
-#    while True:
-#
-#        try:
-#
-#            sourceFrame = await framesQueue.get()
-#
-#            async def runDetection(sourceFrame, models):
-#                result = await asyncio.get_event_loop().run_in_executor(
-#                    None, detection.runDetection, sourceFrame, models
-#                )
-#                await out.publish(await result.drawOutputImageAsunc())
-#
-#            asyncio.create_task(runDetection(sourceFrame, [detection.fall_down_model]))
-#
-#        except asyncio.CancelledError:
-#            raise
-#        except Exception as e:
-#            logger.exception(f"处理帧时发生异常: {str(e)}")
-#        pass
-#
+        await out.subscribe(asyncio.Queue(maxsize=16)),
+        __name__,
+    ).pushFrames()
+    pass
 
 
 async def handleFrames():
@@ -259,8 +117,8 @@ async def handleFrames():
     framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
     await source.subscribe(framesQueue)
 
-    res: detection.Result = None
-    task: asyncio.Task = None
+    res: detection.Result | None = None
+    task: asyncio.Task | None = None
 
     while True:
         try:
@@ -288,7 +146,7 @@ async def handleFrames():
                     None,
                     _runDetection,
                     sourceFrame,
-                    [detection.fall_down_model],
+                    detection.models,
                 )
 
             _res = detection.Result(sourceFrame, res.cellMap)
@@ -317,5 +175,3 @@ async def initCamera():
 
 async def releaseCamera():
     logger.info("释放摄像头资源")
-    await releaseCap()
-    await releaseProcess()
