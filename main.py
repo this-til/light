@@ -11,6 +11,7 @@ import uart
 import camera
 import orbbec_camera
 import detection
+import audio
 
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
@@ -38,16 +39,14 @@ async def main():
 
         await configure.initConfigure()
         await uart.initUart()
+        await audio.initAudio()
         await camera.initCamera()
         await orbbec_camera.initOrbbecCamera()
-        # await server.initServer()
+        await server.initServer()
         await device.initDevice()
         await detection.initDetection()
 
         await server.runServer()
-
-        # while active:
-        #    await asyncio.sleep(1)
     finally:
 
         await util.gracefulShutdown()
@@ -57,6 +56,7 @@ async def main():
         await server.releaseServer()
         await camera.releaseCamera()
         await orbbec_camera.releaseOrbbecCamera()
+        await audio.releaseAudio()
         await uart.releaseUart()
         await configure.releaseConfigure()
 

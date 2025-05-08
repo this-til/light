@@ -2,6 +2,7 @@
 
 from quart import Quart, jsonify, request
 import asyncio
+import threading
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
 import logging
@@ -11,8 +12,13 @@ from quart_cors import cors
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+
 app = Quart(__name__)
 app = cors(app, allow_origin="*") 
+
+
 
 # 自定义配置示例
 class ServerConfig:
@@ -35,6 +41,9 @@ async def runServer(config: ServerConfig = ServerConfig()):
             
     pass
     
+    
+async def initServer():
+    pass
 
 async def releaseServer():
     await app.shutdown()
@@ -47,7 +56,7 @@ class Status(Enum):
     ERROR = "ERROR"
 
 
-def createCarrier(data, status: Enum = Status.SUCCESS, message: str = None):
+def createCarrier(data, status: Enum = Status.SUCCESS, message: str | None = None):
     if message is None:
         message = status.value
     return jsonify({"message": message, "data": data, "status": status.value})
@@ -60,13 +69,13 @@ async def getDeviceValues():
 
 @app.route("/getDeviceValue")
 async def getDeviceValue():
-    key = request.args.get("key")
+    key : str = str(request.args.get("key"))
     return createCarrier(device.getDeviceValue(key))
 
 
 @app.route("/setDeviceValue", methods=["POST"])
 async def setDeviceValue():
-    key = request.args.get("key")
+    key : str = str(request.args.get("key"))
     data = await request.get_json()
     value = data.get("value")
     return createCarrier(device.setDeviceValue(key, value))
@@ -74,13 +83,13 @@ async def setDeviceValue():
 
 @app.route("/getConfigure")
 async def getConfigure():
-    key = request.args.get("key")
+    key : str = str(request.args.get("key"))
     return createCarrier(configure.getConfigure(key))
 
 
 @app.route("/setConfigure", methods=["POST"])
 async def setConfigure():
-    key = request.args.get("key")
+    key : str = str(request.args.get("key"))
     data = await request.get_json()
     value = data.get("value")
     return createCarrier(configure.setConfigure(key, value))

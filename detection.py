@@ -56,7 +56,7 @@ class Model:
     path: str
     size: tuple[int, int]
 
-    rknn: RKNN = None
+    rknn: RKNN = None  # type: ignore
 
     def __init__(
         self,
@@ -110,7 +110,7 @@ class Model:
         with inferenceLock:
             try:
                 res = self.rknn.inference(inputs=[inputImage])
-          
+
             except Exception as e:
                 logger.exception(
                     f"thie {self.path} model inference raise Exception: {str(e)} "
@@ -123,7 +123,7 @@ class Model:
 
         if boxes is not None:
             for box, score, cl in zip(
-                util.realBox(boxes, originalSize, self.size), scores, classes
+                util.realBox(boxes, originalSize, self.size), scores, classes  # type: ignore
             ):
                 outList.append(Cell(self.itemList[cl], box, score))
                 pass
@@ -266,8 +266,8 @@ class Model:
 
 class Result:
 
-    inputImage: cv2.typing.MatLike | None = None
-    outputImage: cv2.typing.MatLike | None = None
+    inputImage: cv2.typing.MatLike
+    outputImage: cv2.typing.MatLike | None
 
     cellMap: dict[Model, list[Cell]] = {}
 
@@ -289,9 +289,13 @@ class Result:
         """
         在outputImage上绘制所有检测框和标签
         """
+
         if self.outputImage is None:
             # 深拷贝原始图像，避免修改原图
             self.outputImage = self.inputImage.copy()
+
+            if self.cellMap is None:
+                return self.outputImage
 
             # 遍历所有模型及其检测结果
             for model, cells in self.cellMap.items():
@@ -359,13 +363,15 @@ class Result:
 
 
 accident = Item("accident", Color(255, 0, 0))
-car_accident_model = Model("car_accident", [accident], "light/model/car_accident.rknn")
+car_accident_model = Model(
+    "car_accident", [accident], "/home/elf/light/model/car_accident.rknn"
+)
 
 
 fall_down = Item("fall down", Color(255, 150, 51))
 stand_person = Item("stand person", Color(100, 255, 100))
 fall_down_model = Model(
-    "fall_down", [fall_down, stand_person], "light/model/fall_down.rknn"
+    "fall_down", [fall_down, stand_person], "/home/elf/light/model/fall_down.rknn"
 )
 
 modelMap = {
@@ -373,16 +379,15 @@ modelMap = {
     fall_down_model.name: fall_down_model,
 }
 
-models = modelMap.values()
+models = list(modelMap.values())
 
-def runDetection(
-    inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]
-) -> Result:
+
+def runDetection(inputImage: cv2.typing.MatLike , useModel: set[Model] | list[Model]) -> Result:
 
     h, w = inputImage.shape[:2]
     originalSize: tuple[int, int] = (h, w)
 
-    cellMap: map[Model, list[Cell]] = {}
+    cellMap: dict[Model, list[Cell]] = {}
 
     sizeMap: dict[tuple[int, int], list[Model]] = {}
 

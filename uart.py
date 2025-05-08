@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 loop = asyncio.get_event_loop()
 loop.set_debug(True)
 
-reader: asyncio.StreamReader = None
-writer: asyncio.StreamWriter = None
+reader: asyncio.StreamReader 
+writer: asyncio.StreamWriter 
 
 usarReader: Broadcaster[bytes] = Broadcaster()
 

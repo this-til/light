@@ -8,7 +8,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE_PATH = "light/config.json"
+CONFIG_FILE_PATH = "/home/elf/lightconfig.json"
 
 needSave = False
 

@@ -5,7 +5,7 @@ import asyncio
 import logging
 import numpy as np
 import util
-from util import Broadcaster, FFmpegPush
+from util import Broadcaster, FFmpegPushFrame
 from pyorbbecsdk import *
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,9 @@ async def readImageLoop():
                 if color_frame is None:
                     continue
 
-                color_image = util.frame_to_bgr_image(color_frame)
+                color_image = await asyncio.get_event_loop().run_in_executor(
+                    None, util.frame_to_bgr_image, color_frame
+                )
                 if color_image is None:
                     logger.warning("failed to convert frame to image")
                     continue
@@ -108,14 +110,14 @@ async def handleFrames():
 
 
 async def pushFrames():
-    await FFmpegPush(
+    await FFmpegPushFrame(
         width,
         height,
         fps,
         pushRtspUrl,
         await source.subscribe(asyncio.Queue(maxsize=16)),
         __name__,
-    ).pushFrames()
+    ).loop()
     pass
 
 

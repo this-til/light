@@ -7,7 +7,7 @@ import cv2
 import detection
 import time
 from asyncio.subprocess import PIPE
-from util import Broadcaster, FFmpegPush
+from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,17 @@ password = "qWERTYUIOP"
 width, height = 2560, 1440
 fps = 25
 
+# 音频参数
+FREQUENCY = 16000  # 采样率16kHz
+SAMPLE_SIZE = -16  # 16位有符号PCM
+CHANNELS = 1  # 单声道
+BUFFER_SIZE = 4096  # 每次读取的数据块大小，须为2的倍数
+
+
 cameraRtspUrl = f"rtsp://{user}:{password}@{ip}:{rtsp_port}/Streaming/Channels/101"
 
 source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+audioSource: Broadcaster[bytes] = Broadcaster()
 out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
 identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
@@ -60,6 +68,9 @@ async def readFrames():
                 continue
 
             while True:
+                ret: bool
+                frame: cv2.typing.MatLike
+
                 ret, frame = await asyncio.get_event_loop().run_in_executor(
                     None, cap.read
                 )
@@ -70,7 +81,9 @@ async def readFrames():
 
                 h, w = frame.shape[:2]
                 if w < h:
-                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                    frame = await asyncio.get_event_loop().run_in_executor(
+                        None, cv2.rotate, frame, cv2.ROTATE_90_CLOCKWISE
+                    )
 
                 await source.publish(frame)
 
@@ -88,6 +101,34 @@ async def readFrames():
         pass
 
 
+async def extractAudio():
+
+    ffmpeg_command = [
+        "ffmpeg",
+        "-i",
+        cameraRtspUrl,  # 输入RTSP流
+        "-vn",  # 忽略视频
+        "-acodec",
+        "pcm_s16le",  # 输出PCM格式
+        "-ar",
+        str(FREQUENCY),  # 采样率
+        "-ac",
+        str(CHANNELS),  # 声道数
+        "-f",
+        "s16le",  # 输出格式为s16le
+        "-loglevel",
+        "quiet",  # 屏蔽FFmpeg日志
+        "pipe:1",  # 输出到标准输出
+    ]
+
+    async def publishToAudio(b: bytes):
+        await audioSource.publish(b)
+
+    await ByteFFmpegPull(ffmpeg_command, BUFFER_SIZE, publishToAudio, "cameraAudio").loop()
+
+    pass
+
+
 async def renderFrames():
     while True:
         try:
@@ -101,14 +142,14 @@ async def renderFrames():
 
 
 async def pushFrames():
-    await FFmpegPush(
+    await FFmpegPushFrame(
         width,
         height,
         fps,
         pushRtspUrl,
         await out.subscribe(asyncio.Queue(maxsize=16)),
         __name__,
-    ).pushFrames()
+    ).loop()
     pass
 
 
@@ -118,12 +159,12 @@ async def handleFrames():
     await source.subscribe(framesQueue)
 
     res: detection.Result | None = None
-    task: asyncio.Task | None = None
+    task: asyncio.Future[detection.Result] | None = None
 
     while True:
         try:
 
-            sourceFrame = await framesQueue.get()
+            sourceFrame: cv2.typing.MatLike = await framesQueue.get()
 
             if res is None:
                 res = detection.Result(sourceFrame, {})
@@ -134,12 +175,14 @@ async def handleFrames():
                     res = task.result()
                     await identifyKeyframe.publish(res)
 
-                def _runDetection(inputImage, useModel):
-                    start_time = time.perf_counter()
+                def _runDetection(
+                    inputImage: cv2.typing.MatLike, useModel: list[detection.Model]
+                ):
+                    # start_time = time.perf_counter()
                     res = detection.runDetection(inputImage, useModel)
-                    end_time = time.perf_counter()
-                    duration_ms = (end_time - start_time) * 1000
-                    logger.info(f"inference 耗时: {duration_ms:.3f}ms")
+                    # end_time = time.perf_counter()
+                    # duration_ms = (end_time - start_time) * 1000
+                    # logger.info(f"inference 耗时: {duration_ms:.3f}ms")
                     return res
 
                 task = asyncio.get_event_loop().run_in_executor(
@@ -169,6 +212,7 @@ async def handleFrames():
 async def initCamera():
     logger.info("初始化摄像头模块")
     asyncio.create_task(readFrames())
+    asyncio.create_task(extractAudio())
     asyncio.create_task(handleFrames())
     asyncio.create_task(pushFrames())
 
