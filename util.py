@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import json
-from typing import Generic, TypeVar, Optional, Any, Union
+from typing import *
 import re
 import cv2
 import numpy as np
@@ -47,6 +47,7 @@ class Color:
 
         pass
 
+
 T = TypeVar("T")  # 定义泛型类型
 
 
@@ -74,11 +75,127 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
                 await q.put(item)
 
 
-class FFmpegPush:
-
-    pushProcess: asyncio.subprocess.Process | None
+class FFmpeg:
 
     command: list[str]
+    process: asyncio.subprocess.Process
+
+    def __init__(self, command: list[str], logTag: str):
+        self.logger = logging.getLogger(logTag)
+        self.command = command
+        pass
+
+    async def loop(self):
+
+        while True:
+            try:
+                self.logger.info("正在启动FFmpeg进程...")
+                # 启动FFmpeg进程
+
+                self.process = await asyncio.create_subprocess_exec(
+                    *self.command,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
+                while True:
+                    await self.operate()
+
+                    returncode = self.process.returncode
+                    if returncode is not None:
+                        self.logger.error(
+                            f"FFmpeg进程异常退出(代码{returncode})，正在重启..."
+                        )
+                        raise Exception("FFmpeg进程意外终止")
+
+            except asyncio.CancelledError:
+                self.logger.info("任务被取消，执行清理...")
+                await self.releaseProcess()
+                break
+
+            except Exception as e:
+                self.logger.error(f"FFmpeg任务异常: {str(e)}")
+                await self.releaseProcess()
+                self.logger.info(f"5秒后重启")
+                await asyncio.sleep(5)
+
+            pass
+        pass
+
+    async def operate(self):
+        pass
+
+    async def releaseProcess(self):
+
+        if self.process is not None and self.process.stdin is not None:
+            self.process.stdin.close()
+            await self.process.stdin.wait_closed()
+
+            try:
+                await asyncio.wait_for(self.process.wait(), timeout=2)
+            except asyncio.TimeoutError:
+                self.process.kill()
+                await self.process.wait()
+
+            self.process = None  # type: ignore
+
+    pass
+
+
+class ByteFFmpegPull(FFmpeg):
+
+    handle: Callable[[bytes], Awaitable]
+    size: int
+
+    def __init__(
+        self,
+        command: list[str],
+        size: int,
+        handle: Callable[[bytes], Awaitable],
+        logTag: str,
+    ):
+        super().__init__(command, logTag)
+
+        self.size = size
+        self.handle = handle
+        pass
+
+    async def operate(self):
+        await self.handle(await self.process.stdout.read(self.size))  # type: ignore
+        pass
+
+    pass
+
+
+class FFmpegPush(FFmpeg):
+    getPushDataLambda: Callable[[], Awaitable[bytes | None]]
+
+    def __init__(
+        self,
+        command: list[str],
+        getPushDataLambda: Callable[[], Awaitable[bytes | None]],
+        logTag: str,
+    ):
+        super().__init__(command, logTag)
+        self.getPushDataLambda = getPushDataLambda
+        pass
+
+    async def operate(self):
+
+        data = await self.getPushDataLambda()
+
+        if data is None:
+            await asyncio.sleep(0.1)
+            return
+
+        self.process.stdin.write(data)  # type: ignore
+        await self.process.stdin.drain()  # type: ignore
+
+    pass
+
+
+class FFmpegPushFrame(FFmpegPush):
 
     width: int
     height: int
@@ -95,116 +212,257 @@ class FFmpegPush:
         framesQueue: asyncio.Queue[cv2.typing.MatLike],
         logTag: str,
     ):
+        super().__init__(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "bgr24",
+                "-s",
+                f"{width}x{height}",
+                "-r",
+                f"{fps}",
+                "-i",
+                "-",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                "-f",
+                "rtsp",
+                "-rtsp_transport",
+                "tcp",
+                pushRtspUrl,
+            ],
+            self.toByte,
+            logTag,
+        )
+
+        self.framesQueue = framesQueue
+
         self.width = width
         self.height = height
         self.fps = fps
         self.pushRtspUrl = pushRtspUrl
         self.framesQueue = framesQueue
-        self.logger = logging.getLogger(logTag)
 
-        self.command = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "bgr24",
-            "-s",
-            f"{width}x{height}",
-            "-r",
-            f"{fps}",
-            "-i",
-            "-",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-pix_fmt",
-            "yuv420p",
-            "-f",
-            "rtsp",
-            "-rtsp_transport",
-            "tcp",
-            pushRtspUrl,
-        ]
+        pass
 
-    async def pushFrames(self):
-        while True:  # 无限循环尝试重启FFmpeg进程
+    async def toByte(self) -> bytes | None:
+        frame: cv2.typing.MatLike = await self.framesQueue.get()
+
+        # 检查帧尺寸是否匹配预期
+        frame_height, frame_width = frame.shape[:2]
+        if (frame_width, frame_height) != (self.width, self.height):
+            self.logger.warning(
+                f"帧尺寸不匹配(期望{self.width}x{self.height}，实际{frame_width}x{frame_height})，正在调整尺寸..."
+            )
             try:
-                logger.info("正在启动FFmpeg推流进程...")
-                # 启动FFmpeg进程
-                pushProcess = await asyncio.create_subprocess_exec(
-                    *self.command,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                # 使用双线性插值调整尺寸（可根据需求更换插值算法）
+                frame = cv2.resize(
+                    frame,
+                    (self.width, self.height),
+                    interpolation=cv2.INTER_LINEAR,
                 )
+            except Exception as resize_err:
+                self.logger.error(f"调整帧尺寸失败: {str(resize_err)}，跳过该帧")
+                return None
+        # 将帧转换为字节流
+        return frame.tobytes()
 
-                # 创建一个任务来监控进程的输出和错误
-                while True:  # 主循环处理帧
-                    frame = await self.framesQueue.get()
 
-                    # 检查帧尺寸是否匹配预期
-                    frame_height, frame_width = frame.shape[:2]
-                    if (frame_width, frame_height) != (self.width, self.height):
-                        self.logger.warning(
-                            f"帧尺寸不匹配(期望{self.width}x{self.height}，实际{frame_width}x{frame_height})，正在调整尺寸..."
-                        )
-                        try:
-                            # 使用双线性插值调整尺寸（可根据需求更换插值算法）
-                            frame = cv2.resize(
-                                frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR
-                            )
-                        except Exception as resize_err:
-                            self.logger.error(
-                                f"调整帧尺寸失败: {str(resize_err)}，跳过该帧"
-                            )
-                            continue
+# class FFmpegPushFrame:
+#
+#     pushProcess: asyncio.subprocess.Process | None
+#
+#     command: list[str]
+#
+#     width: int
+#     height: int
+#     fps: int
+#     pushRtspUrl: str
+#     framesQueue: asyncio.Queue[cv2.Mat]
+#
+#     def __init__(
+#         self,
+#         width: int,
+#         height: int,
+#         fps: int,
+#         pushRtspUrl: str,
+#         framesQueue: asyncio.Queue[cv2.Mat],
+#         logTag: str,
+#     ):
+#         self.width = width
+#         self.height = height
+#         self.fps = fps
+#         self.pushRtspUrl = pushRtspUrl
+#         self.framesQueue = framesQueue
+#         self.logger = logging.getLogger(logTag)
+#
+#         self.command = [
+#            "ffmpeg",
+#            "-y",
+#            "-f",
+#            "rawvideo",
+#            "-pix_fmt",
+#            "bgr24",
+#            "-s",
+#            f"{width}x{height}",
+#            "-r",
+#            f"{fps}",
+#            "-i",
+#            "-",
+#            "-c:v",
+#            "libx264",
+#            "-preset",
+#            "ultrafast",
+#            "-pix_fmt",
+#            "yuv420p",
+#            "-f",
+#            "rtsp",
+#            "-rtsp_transport",
+#            "tcp",
+#            pushRtspUrl,
+#        ]
+#
+#     async def pushFrames(self):
+#         while True:
+#             try:
+#                 logger.info("正在启动FFmpeg推流进程...")
+#                 # 启动FFmpeg进程
+#                 self.pushProcess = await asyncio.create_subprocess_exec(
+#                     *self.command,
+#                     stdin=asyncio.subprocess.PIPE,
+#                     stdout=asyncio.subprocess.PIPE,
+#                     stderr=asyncio.subprocess.PIPE,
+#                 )
+#
+#                 # 创建一个任务来监控进程的输出和错误
+#                 while True:  # 主循环处理帧
+#                     frame = await self.framesQueue.get()
+#
+#                     # 检查帧尺寸是否匹配预期
+#                     frame_height, frame_width = frame.shape[:2]
+#                     if (frame_width, frame_height) != (self.width, self.height):
+#                        self.logger.warning(
+#                            f"帧尺寸不匹配(期望{self.width}x{self.height}，实际{frame_width}x{frame_height})，正在调整尺寸..."
+#                        )
+#                        try:
+#                            # 使用双线性插值调整尺寸（可根据需求更换插值算法）
+#                            frame = cv2.resize(
+#                                frame,
+#                                (self.width, self.height),
+#                                interpolation=cv2.INTER_LINEAR,
+#                            )
+#                        except Exception as resize_err:
+#                            self.logger.error(
+#                                f"调整帧尺寸失败: {str(resize_err)}，跳过该帧"
+#                            )
+#                            continue
+#
+#                     # 将帧转换为字节流
+#                     data = frame.tobytes()
+#
+#                     # 写入FFmpeg进程的输入管道
+#                     try:
+#                         if self.pushProcess.stdin is not None:
+#                             self.pushProcess.stdin.write(data)
+#                             await self.pushProcess.stdin.drain()  # 确保数据已写入
+#                     except (BrokenPipeError, ConnectionResetError) as e:
+#                         self.logger.error(f"写入FFmpeg进程失败: {e}")
+#                         raise  # 触发外层异常处理重新启动进程
+#
+#                     # 检查FFmpeg进程是否仍在运行
+#                     returncode = self.pushProcess.returncode
+#                     if returncode is not None:
+#                         self.logger.error(
+#                             f"FFmpeg进程异常退出(代码{returncode})，正在重启..."
+#                         )
+#                         raise Exception("FFmpeg进程意外终止")
+#
+#             except asyncio.CancelledError:
+#                 self.logger.info("推流任务被取消，执行清理...")
+#                 await self.releaseProcess()
+#                 break
+#
+#             except Exception as e:
+#                 self.logger.error(f"推流任务异常: {str(e)}")
+#                 await self.releaseProcess()
+#                 self.logger.info(f"5秒后重启")
+#                 await asyncio.sleep(5)
+#
+#     async def releaseProcess(self):
+#
+#         if self.pushProcess is not None and self.pushProcess.stdin is not None:
+#             self.pushProcess.stdin.close()
+#             await self.pushProcess.stdin.wait_closed()
+#
+#             try:
+#                 await asyncio.wait_for(self.pushProcess.wait(), timeout=2)
+#             except asyncio.TimeoutError:
+#                 self.pushProcess.kill()
+#                 await self.pushProcess.wait()
+#
+#             self.pushProcess = None
+#
 
-                    # 将帧转换为字节流
-                    data = frame.tobytes()
 
-                    # 写入FFmpeg进程的输入管道
-                    try:
-                        if pushProcess.stdin is not None:
-                            pushProcess.stdin.write(data)
-                            await pushProcess.stdin.drain()  # 确保数据已写入
-                    except (BrokenPipeError, ConnectionResetError) as e:
-                        self.logger.error(f"写入FFmpeg进程失败: {e}")
-                        raise  # 触发外层异常处理重新启动进程
+class CircularBuffer:
+    """固定大小的循环缓冲区实现"""
 
-                    # 检查FFmpeg进程是否仍在运行
-                    returncode = pushProcess.returncode
-                    if returncode is not None:
-                        self.logger.error(
-                            f"FFmpeg进程异常退出(代码{returncode})，正在重启..."
-                        )
-                        raise Exception("FFmpeg进程意外终止")
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        self.buffer = bytearray(capacity)
+        self.read_pos = 0
+        self.write_pos = 0
+        self.size = 0
 
-            except asyncio.CancelledError:
-                self.logger.info("推流任务被取消，执行清理...")
-                await self.releaseProcess()
-                break
+    def write(self, data: bytes) -> int:
+        """写入数据，返回实际写入字节数"""
+        remaining = self.capacity - self.size
+        write_len = min(len(data), remaining)
 
-            except Exception as e:
-                self.logger.error(f"推流任务异常: {str(e)}")
-                await self.releaseProcess()
-                self.logger.info(f"5秒后重启")
-                await asyncio.sleep(5)
+        # 计算尾部可用空间
+        end_space = self.capacity - self.write_pos
+        first_part = min(write_len, end_space)
+        second_part = write_len - first_part
 
-    async def releaseProcess(self):
+        # 写入数据
+        self.buffer[self.write_pos : self.write_pos + first_part] = data[:first_part]
+        if second_part > 0:
+            self.buffer[0:second_part] = data[first_part : first_part + second_part]
 
-        if self.pushProcess is not None and self.pushProcess.stdin is not None:
-            self.pushProcess.stdin.close()
-            await self.pushProcess.stdin.wait_closed()
+        self.write_pos = (self.write_pos + write_len) % self.capacity
+        self.size += write_len
+        return write_len
 
-            try:
-                await asyncio.wait_for(self.pushProcess.wait(), timeout=2)
-            except asyncio.TimeoutError:
-                self.pushProcess.kill()
-                await self.pushProcess.wait()
+    def read(self, size: int) -> bytes:
+        """读取指定大小的数据，返回空字节表示不足"""
+        if self.size < size:
+            return b""
 
-            self.pushProcess = None
+        # 计算需要读取的分布
+        end_data = self.capacity - self.read_pos
+        first_part = min(size, end_data)
+        second_part = size - first_part
+
+        # 构建返回数据
+        result = bytearray(size)
+        result[0:first_part] = self.buffer[self.read_pos : self.read_pos + first_part]
+        if second_part > 0:
+            result[first_part:size] = self.buffer[0:second_part]
+
+        self.read_pos = (self.read_pos + size) % self.capacity
+        self.size -= size
+        return bytes(result)
+
+    def available(self) -> int:
+        return self.size
+
 
 def getAllTasks() -> list[asyncio.Task]:
     """
@@ -233,7 +491,8 @@ async def gracefulShutdown():
             logging.error(f"Task {task.get_name()} raised an exception:", e)
 
 
-def flattenJson(data, parent_key="", sep=".", list_sep="[{}]"):
+
+def flattenJson(data, parent_key="", sep=".", list_sep="[{}]") -> dict[str, object]:
     items = {}
     if isinstance(data, dict):
         for key, value in data.items():
@@ -264,22 +523,9 @@ def jsonDeepMerge(source, overrides):
     return source  # 返回修改后的 source
 
 
-def parseKeyPath(key_str: str) -> list[tuple[str, Optional[int]]]:
-    """解析路径字符串为键和索引的列表，例如 'a.b[0].c' -> [('a', None), ('b', 0), ('c', None)]"""
-    parts = key_str.split(".")
-    parsed = []
-    pattern = re.compile(r"^(\w+)(?:\[(\d+)\])?$")
-    for part in parts:
-        match = pattern.match(part)
-        if not match:
-            raise ValueError(f"Invalid path part: {part}")
-        key, index_str = match.groups()
-        index = int(index_str) if index_str is not None else None
-        parsed.append((key, index))
-    return parsed
 
 
-def getFromJson(key: str, ojson: dict) -> any:
+def getFromJson(key: str, ojson: dict) -> object:
     def parse_segment(seg):
         match = re.match(r"^([^\[\]]*?)((?:\[\d+\])*)$", seg)
         if not match:
@@ -308,7 +554,7 @@ def getFromJson(key: str, ojson: dict) -> any:
     return current
 
 
-def setFromJson(key: str, value: any, ojson: dict) -> None:
+def setFromJson(key: str, value: object, ojson: dict) -> None:
     def parse_segment(seg):
         match = re.match(r"^([^\[\]]*?)((?:\[\d+\])*)$", seg)
         if not match:
@@ -426,7 +672,7 @@ def realBox(
                x1,y1为左上角坐标，x2,y2为右下角坐标（基于预处理后的图像坐标系）
         originalImageSize: tuple[float, float], 原始图像尺寸 (height, width)
         targetSize: tuple[float, float], 识别时的目标尺寸 (height, width)
-        
+
     返回:
         List[Box]: 转换后的Box对象列表
     """
@@ -491,8 +737,8 @@ def uyvy_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
 
 def i420_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     y = frame[0:height, :]
-    u = frame[height:height + height // 4].reshape(height // 2, width // 2)
-    v = frame[height + height // 4:].reshape(height // 2, width // 2)
+    u = frame[height : height + height // 4].reshape(height // 2, width // 2)
+    v = frame[height + height // 4 :].reshape(height // 2, width // 2)
     yuv_image = cv2.merge([y, u, v])
     bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_I420)
     return bgr_image
@@ -500,7 +746,7 @@ def i420_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
 
 def nv21_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     y = frame[0:height, :]
-    uv = frame[height:height + height // 2].reshape(height // 2, width)
+    uv = frame[height : height + height // 2].reshape(height // 2, width)
     yuv_image = cv2.merge([y, uv])
     bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_NV21)
     return bgr_image
@@ -508,7 +754,7 @@ def nv21_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
 
 def nv12_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     y = frame[0:height, :]
-    uv = frame[height:height + height // 2].reshape(height // 2, width)
+    uv = frame[height : height + height // 2].reshape(height // 2, width)
     yuv_image = cv2.merge([y, uv])
     bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_NV12)
     return bgr_image

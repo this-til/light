@@ -15,6 +15,23 @@ needSave = False
 configureMap = {}
 
 
+class ConfigureChangeEvent:
+
+    key: str = None  # type: ignore
+    value: object | None = None
+    oldValue: object | None = None
+
+    def __init__(self, key: str, value: object | None, oldValue: object | None):
+        self.key = key
+        self.value = value
+        self.oldValue = oldValue
+
+    pass
+
+
+configureChange: util.Broadcaster[ConfigureChangeEvent] = util.Broadcaster()
+
+
 async def saveConfigure():
     global configureMap, needSave
     with open(CONFIG_FILE_PATH, "w") as file:
@@ -40,7 +57,7 @@ async def saveConfigureLoop():
 
 async def initConfigure():
     global configureMap
-    
+
     try:
         # 尝试加载现有配置文件
         with open(CONFIG_FILE_PATH, "r") as file:
@@ -70,7 +87,6 @@ async def initConfigure():
 
     asyncio.create_task(saveConfigureLoop())
 
-
     return configureMap
 
 
@@ -84,7 +100,9 @@ def getConfigure(key: str):
     return util.getFromJson(key, configureMap)
 
 
-def setConfigure(key: str, value):
+async def setConfigure(key: str, value):
     global needSave
+    old = util.getFromJson(key, configureMap)
     util.setFromJson(key, value, configureMap)
+    await configureChange.publish(ConfigureChangeEvent(key, value, old))
     needSave = True

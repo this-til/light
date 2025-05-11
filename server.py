@@ -92,7 +92,7 @@ async def setConfigure():
     key : str = str(request.args.get("key"))
     data = await request.get_json()
     value = data.get("value")
-    return createCarrier(configure.setConfigure(key, value))
+    return createCarrier(await configure.setConfigure(key, value))
 
 
 @app.errorhandler(Exception)

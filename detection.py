@@ -109,7 +109,7 @@ class Model:
 
         with inferenceLock:
             try:
-                res = self.rknn.inference(inputs=[inputImage])
+                res = self.rknn.inference(inputs=[inputImage], data_format='nhwc')
 
             except Exception as e:
                 logger.exception(

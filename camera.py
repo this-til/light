@@ -6,8 +6,14 @@ import numpy as np
 import cv2
 import detection
 import time
+import hkws
+from ctypes import cdll, CDLL
+from typing import *
+from hkws.cm_camera_adpt import CameraAdapter
+from hkws.config import Config
 from asyncio.subprocess import PIPE
 from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
+from enum import IntEnum, unique
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +42,136 @@ identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
 cap: cv2.VideoCapture
 
 pushRtspUrl = "rtsp://localhost:8554/stream1"
+
+cnf = Config()
+cnf.User = user
+cnf.Password = password
+cnf.IP = ip
+cnf.SDKPath = "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/HCNetSDKCom"
+
+
+@unique
+class DeviceCommand(IntEnum):
+    """
+    设备控制指令枚举（值映射协议指令码）
+    每个枚举项的第一个值为协议定义值，注释为功能说明
+    """
+
+    # 电源控制类指令
+    LIGHT_PWRON = 2  # 接通灯光电源
+    WIPER_PWRON = 3  # 接通雨刷开关
+    FAN_PWRON = 4  # 接通风扇开关
+    HEATER_PWRON = 5  # 接通加热器开关
+    AUX_PWRON1 = 6  # 辅助设备开关1
+    AUX_PWRON2 = 7  # 辅助设备开关2
+
+    # 光学控制类指令
+    ZOOM_IN = 11  # 焦距变大(倍率变大)
+    ZOOM_OUT = 12  # 焦距变小(倍率变小)
+    FOCUS_NEAR = 13  # 焦点前调
+    FOCUS_FAR = 14  # 焦点后调
+    IRIS_OPEN = 15  # 光圈扩大
+    IRIS_CLOSE = 16  # 光圈缩小
+
+    # 云台基础运动指令
+    TILT_UP = 21  # 云台上仰
+    TILT_DOWN = 22  # 云台下俯
+    PAN_LEFT = 23  # 云台左转
+    PAN_RIGHT = 24  # 云台右转
+    UP_LEFT = 25  # 云台上仰+左转
+    UP_RIGHT = 26  # 云台上仰+右转
+    DOWN_LEFT = 27  # 云台下俯+左转
+    DOWN_RIGHT = 28  # 云台下俯+右转
+    PAN_AUTO = 29  # 云台自动扫描模式
+
+    # 复合运动指令（云台+光学组合）
+    TILT_DOWN_ZOOM_IN = 58  # 下俯+焦距变大
+    TILT_DOWN_ZOOM_OUT = 59  # 下俯+焦距变小
+    PAN_LEFT_ZOOM_IN = 60  # 左转+焦距变大
+    PAN_LEFT_ZOOM_OUT = 61  # 左转+焦距变小
+    PAN_RIGHT_ZOOM_IN = 62  # 右转+焦距变大
+    PAN_RIGHT_ZOOM_OUT = 63  # 右转+焦距变小
+
+    # 三维复合运动指令
+    UP_LEFT_ZOOM_IN = 64  # 上仰左转+焦距变大
+    UP_LEFT_ZOOM_OUT = 65  # 上仰左转+焦距变小
+    UP_RIGHT_ZOOM_IN = 66  # 上仰右转+焦距变大
+    UP_RIGHT_ZOOM_OUT = 67  # 上仰右转+焦距变小
+    DOWN_LEFT_ZOOM_IN = 68  # 下俯左转+焦距变大
+    DOWN_LEFT_ZOOM_OUT = 69  # 下俯左转+焦距变小
+    DOWN_RIGHT_ZOOM_IN = 70  # 下俯右转+焦距变大
+    DOWN_RIGHT_ZOOM_OUT = 71  # 下俯右转+焦距变小
+    TILT_UP_ZOOM_IN = 72  # 上仰+焦距变大
+    TILT_UP_ZOOM_OUT = 73  # 上仰+焦距变小
+
+
+class Camera(CameraAdapter):
+    userId: int = -1
+
+    libCache: dict[str, CDLL] = {}
+    funcCache: dict[str, Optional[Any]] = {}
+
+    def loadDll(self, dllPath: str) -> CDLL | None:
+        if dllPath in self.libCache:
+            return self.libCache[dllPath]
+        try:
+            lib = cdll.LoadLibrary(dllPath)
+            self.libCache[dllPath] = lib
+        except Exception as e:
+            logging.exception(f"库加载失败: {dllPath} - {str(e)}")
+
+        return None
+
+    def loadFunc(self, funcName: str) -> object | None:
+
+        if funcName in self.funcCache:
+            return self.funcCache[funcName]
+
+        func: Optional[Any] = None
+
+        for soPath in self.so_list:
+            lib: CDLL | None = self.loadDll(soPath)
+            if lib is None:
+                continue
+
+            try:
+                func = getattr(lib, funcName)
+                self.funcCache[funcName] = func
+            except AttributeError:
+                continue
+
+        if func is None:
+            logging.debug(f"{funcName}() 函数不存在")
+            return None
+
+        return func
+
+    def call_cpp(self, func_name: str, *args) -> object:
+        func : Optional[Any]  | None = self.loadFunc(func_name)
+
+        if func is None:
+            return None
+
+        try:
+            return func(*args)
+        except Exception as e:
+            logging.warning(f"{func_name}() 函数执行失败: - {str(e)}")
+            del self.funcCache[func_name]
+            return None
+
+    def ptzControl(self, channel: DeviceCommand, action: int):
+        """
+        :param channel: 通道号
+        :param action: 控制动作
+        :return:
+        """
+        self.call_cpp("NET_DVR_PTZControl", self.userId, channel.value, action)
+        pass
+
+    pass
+
+
+camera = None
 
 
 async def releaseCap():
@@ -124,20 +260,10 @@ async def extractAudio():
     async def publishToAudio(b: bytes):
         await audioSource.publish(b)
 
-    await ByteFFmpegPull(ffmpeg_command, BUFFER_SIZE, publishToAudio, "cameraAudio").loop()
+    await ByteFFmpegPull(
+        ffmpeg_command, BUFFER_SIZE, publishToAudio, "cameraAudio"
+    ).loop()
 
-    pass
-
-
-async def renderFrames():
-    while True:
-        try:
-            pass
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.exception(f"渲染帧时发生异常: {str(e)}")
-        pass
     pass
 
 
@@ -211,6 +337,14 @@ async def handleFrames():
 
 async def initCamera():
     logger.info("初始化摄像头模块")
+
+    global camera
+
+    camera = Camera()
+    camera.userId = camera.common_start(cnf)
+
+    camera.ptzControl(DeviceCommand.TILT_UP, 1)
+
     asyncio.create_task(readFrames())
     asyncio.create_task(extractAudio())
     asyncio.create_task(handleFrames())
@@ -219,3 +353,6 @@ async def initCamera():
 
 async def releaseCamera():
     logger.info("释放摄像头资源")
+    if camera is not None:
+        camera.logout(camera.userId)
+        camera.sdk_clean()
