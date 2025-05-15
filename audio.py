@@ -3,6 +3,7 @@ import logging
 import asyncio
 import audioop
 import camera
+from camera import CameraVoiceData
 from typing import *
 from util import CircularBuffer
 
@@ -26,6 +27,22 @@ async def playStreamLoop():
             logger.exception(f"音频播放的未知异常:{str(e) }")
 
 
+async def readBytesStreamLoop():
+
+    queue: asyncio.Queue[CameraVoiceData] = asyncio.Queue(maxsize=16)
+
+    await camera.camera.voiceBroadcaster.subscribe(queue)
+
+    while True:
+        try:
+            data: CameraVoiceData = await queue.get()
+            await out.put(data.data)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.exception(f"音频读取的未知异常:{str(e) }")
+
+
 async def initAudio():
     pygame.mixer.init(
         frequency=camera.FREQUENCY,
@@ -42,8 +59,9 @@ async def initAudio():
     channel = pygame.mixer.Channel(0)
 
     pygame.mixer.music.set_volume(1)
-    await camera.audioSource.subscribe(out)
+    # await camera.audioSource.subscribe(out)
 
+    asyncio.create_task(readBytesStreamLoop())
     asyncio.create_task(playStreamLoop())
 
 

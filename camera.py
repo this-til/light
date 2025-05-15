@@ -7,10 +7,11 @@ import cv2
 import detection
 import time
 import hkws
-from ctypes import cdll, CDLL
+import ctypes
+import sys
+import util
+from ctypes import *
 from typing import *
-from hkws.cm_camera_adpt import CameraAdapter
-from hkws.config import Config
 from asyncio.subprocess import PIPE
 from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
 from enum import IntEnum, unique
@@ -19,8 +20,10 @@ logger = logging.getLogger(__name__)
 
 ip = "192.168.117.100"
 rtsp_port = "554"
+port = 8000
 user = "admin"
 password = "qWERTYUIOP"
+SDKPath = "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
 
 width, height = 2560, 1440
 fps = 25
@@ -39,88 +42,96 @@ audioSource: Broadcaster[bytes] = Broadcaster()
 out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
 identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
-cap: cv2.VideoCapture
 
 pushRtspUrl = "rtsp://localhost:8554/stream1"
 
-cnf = Config()
-cnf.User = user
-cnf.Password = password
-cnf.IP = ip
-cnf.SDKPath = "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/HCNetSDKCom"
+
+# region HKWS_SDK
 
 
-@unique
-class DeviceCommand(IntEnum):
-    """
-    设备控制指令枚举（值映射协议指令码）
-    每个枚举项的第一个值为协议定义值，注释为功能说明
-    """
-
-    # 电源控制类指令
-    LIGHT_PWRON = 2  # 接通灯光电源
-    WIPER_PWRON = 3  # 接通雨刷开关
-    FAN_PWRON = 4  # 接通风扇开关
-    HEATER_PWRON = 5  # 接通加热器开关
-    AUX_PWRON1 = 6  # 辅助设备开关1
-    AUX_PWRON2 = 7  # 辅助设备开关2
-
-    # 光学控制类指令
-    ZOOM_IN = 11  # 焦距变大(倍率变大)
-    ZOOM_OUT = 12  # 焦距变小(倍率变小)
-    FOCUS_NEAR = 13  # 焦点前调
-    FOCUS_FAR = 14  # 焦点后调
-    IRIS_OPEN = 15  # 光圈扩大
-    IRIS_CLOSE = 16  # 光圈缩小
-
-    # 云台基础运动指令
-    TILT_UP = 21  # 云台上仰
-    TILT_DOWN = 22  # 云台下俯
-    PAN_LEFT = 23  # 云台左转
-    PAN_RIGHT = 24  # 云台右转
-    UP_LEFT = 25  # 云台上仰+左转
-    UP_RIGHT = 26  # 云台上仰+右转
-    DOWN_LEFT = 27  # 云台下俯+左转
-    DOWN_RIGHT = 28  # 云台下俯+右转
-    PAN_AUTO = 29  # 云台自动扫描模式
-
-    # 复合运动指令（云台+光学组合）
-    TILT_DOWN_ZOOM_IN = 58  # 下俯+焦距变大
-    TILT_DOWN_ZOOM_OUT = 59  # 下俯+焦距变小
-    PAN_LEFT_ZOOM_IN = 60  # 左转+焦距变大
-    PAN_LEFT_ZOOM_OUT = 61  # 左转+焦距变小
-    PAN_RIGHT_ZOOM_IN = 62  # 右转+焦距变大
-    PAN_RIGHT_ZOOM_OUT = 63  # 右转+焦距变小
-
-    # 三维复合运动指令
-    UP_LEFT_ZOOM_IN = 64  # 上仰左转+焦距变大
-    UP_LEFT_ZOOM_OUT = 65  # 上仰左转+焦距变小
-    UP_RIGHT_ZOOM_IN = 66  # 上仰右转+焦距变大
-    UP_RIGHT_ZOOM_OUT = 67  # 上仰右转+焦距变小
-    DOWN_LEFT_ZOOM_IN = 68  # 下俯左转+焦距变大
-    DOWN_LEFT_ZOOM_OUT = 69  # 下俯左转+焦距变小
-    DOWN_RIGHT_ZOOM_IN = 70  # 下俯右转+焦距变大
-    DOWN_RIGHT_ZOOM_OUT = 71  # 下俯右转+焦距变小
-    TILT_UP_ZOOM_IN = 72  # 上仰+焦距变大
-    TILT_UP_ZOOM_OUT = 73  # 上仰+焦距变小
 
 
-class Camera(CameraAdapter):
+
+class CameraRealPlayData:
+    camera: "Camera"
+    dataType: int
+    data: bytes
+
+    def __init__(self, camera: "Camera", dataType: int, data: bytes):
+        self.camera = camera
+        self.dataType = dataType
+        self.data = data
+        pass
+
+    pass
+
+
+class CameraVoiceData:
+    camera: "Camera"
+    data: bytes
+
+    def __init__(self, camera: "Camera", data: bytes):
+        self.camera = camera
+        self.data = data
+
+
+RealPlayCallBackType = CFUNCTYPE(None, c_int, c_int, c_void_p, c_int, c_void_p)
+VoiceDataCallBackType = CFUNCTYPE(None, c_int, c_void_p, c_int, c_byte, c_void_p)
+
+
+class Camera:
+
+    user: str
+    password: str
+    ip: str
+    port: int
+
+    soList: list[str] = []
+
     userId: int = -1
+    realHandle: int = -1
+    voiceHandle: int = -1
+    audioDecoderHandle : int = -1
 
     libCache: dict[str, CDLL] = {}
     funcCache: dict[str, Optional[Any]] = {}
 
+    lastCell: str = ""
+
+    realPlayBroadcaster: Broadcaster[CameraRealPlayData] = Broadcaster()
+    voiceBroadcaster: Broadcaster[CameraVoiceData] = Broadcaster()
+
+    def __init__(self, user: str, password: str, ip: str, port: int):
+        self.user = user
+        self.password = password
+        self.ip = ip
+        self.port = port
+
+    def addSo(self, soPath: str):
+        if soPath not in self.soList:
+            self.soList.append(soPath)
+
+    def addSoFromDir(self, dirPath: str):
+        import os
+
+        for root, dirs, files in os.walk(dirPath):
+            for file in files:
+                if file.endswith(".so"):
+                    soPath = os.path.join(root, file)
+                    self.addSo(soPath)
+
     def loadDll(self, dllPath: str) -> CDLL | None:
         if dllPath in self.libCache:
             return self.libCache[dllPath]
+
+        lib = None
         try:
             lib = cdll.LoadLibrary(dllPath)
             self.libCache[dllPath] = lib
         except Exception as e:
             logging.exception(f"库加载失败: {dllPath} - {str(e)}")
 
-        return None
+        return lib
 
     def loadFunc(self, funcName: str) -> object | None:
 
@@ -129,7 +140,7 @@ class Camera(CameraAdapter):
 
         func: Optional[Any] = None
 
-        for soPath in self.so_list:
+        for soPath in self.soList:
             lib: CDLL | None = self.loadDll(soPath)
             if lib is None:
                 continue
@@ -146,39 +157,215 @@ class Camera(CameraAdapter):
 
         return func
 
-    def call_cpp(self, func_name: str, *args) -> object:
-        func : Optional[Any]  | None = self.loadFunc(func_name)
+    def callCpp(self, funcName: str, *args) -> object:
+        func: Optional[Any] | None = self.loadFunc(funcName)
 
         if func is None:
             return None
 
+        self.lastCell = funcName
+
         try:
             return func(*args)
         except Exception as e:
-            logging.warning(f"{func_name}() 函数执行失败: - {str(e)}")
-            del self.funcCache[func_name]
+            logging.warning(f"{funcName}() 函数执行失败: - {str(e)}")
+            del self.funcCache[funcName]
             return None
 
-    def ptzControl(self, channel: DeviceCommand, action: int):
+    def initSdk(self):
+        if not self.callCpp("NET_DVR_Init"):
+            self.raiseLastError("NET_DVR_Init() has error")
+
+    def initG711Decoder(self):
+        self. audioDecoderHandle = self.callCpp("NET_DVR_InitG711Decoder") # type: ignore
+        if self.audioDecoderHandle == None:
+            self.audioDecoderHandle = -1
+            self.raiseLastError()
+            
+    def releaseG711Decoder(self):
+        if not self.callCpp("NET_DVR_ReleaseG711Decoder"):
+            self.raiseLastError()
+
+    def activateDevice(self):
+        activate: NET_DVR_ACTIVATECFG = NET_DVR_ACTIVATECFG()
+        activate.dwSize = sizeof(activate)
+        util.fillBuffer(activate, "sPassword", bytes(password, "ascii"))
+
+        if not self.callCpp(
+            "NET_DVR_ActivateDevice", bytes(ip, "ascii"), self.port, byref(activate)
+        ):
+            self.raiseLastError("NET_DVR_ActivateDevice() has error")
+
+    def setConnectTime(self, time: int = 5000, retry: int = 4):
+        if not self.callCpp("NET_DVR_SetConnectTime", time, retry):
+            self.raiseLastError("NET_DVR_SetConnectTime() has error")
+
+    def setReconnect(self, time: int = 10000, enable: bool = True):
+        if not self.callCpp("NET_DVR_SetReconnect", time, enable):
+            self.raiseLastError("NET_DVR_SetReconnect() has error")
+
+    def login(self):
+        userInfo: NET_DVR_USER_LOGIN_INFO = NET_DVR_USER_LOGIN_INFO()
+        userInfo.bUseAsynLogin = 0
+        util.fillBuffer(userInfo, "sDeviceAddress", bytes(ip, "ascii"))
+        userInfo.wPort = self.port
+        util.fillBuffer(userInfo, "sUserName", bytes(self.user, "ascii"))
+        util.fillBuffer(userInfo, "sPassword", bytes(self.password, "ascii"))
+
+        deviceInfo: NET_DVR_DEVICEINFO_V40 = NET_DVR_DEVICEINFO_V40()
+
+        self.userId = self.callCpp("NET_DVR_Login_V40", byref(userInfo), byref(deviceInfo))  # type: ignore
+        if self.userId == -1:
+            self.raiseLastError("NET_DVR_Login_V40() has error")
+
+    def logout(self):
+        if not self.callCpp("NET_DVR_Logout", self.userId):
+            self.raiseLastError("NET_DVR_Logout() has error")
+
+    def realPlay(self):
+        req: NET_DVR_PREVIEWINFO = NET_DVR_PREVIEWINFO()
+
+        req.hPlayWnd = None
+        req.lChannel = 1  # 预览通道号
+        req.dwStreamType = (
+            0  # 码流类型：0-主码流，1-子码流，2-三码流，3-虚拟码流，以此类推
+        )
+        req.dwLinkMode = 0  # 连接方式：0-TCP方式，1-UDP方式，2-多播方式，3-RTP方式，4-RTP/RTSP，5-RTP/HTTP,6-HRUDP（可靠传输）
+        req.bBlocked = 0  # 0-非阻塞 1-阻塞
+
+        self.realHandle = self.callCpp("NET_DVR_RealPlay_V40", self.userId, byref(req), None, None)  # type: ignore
+        if self.realHandle < 0:
+            self.raiseLastError()
+
+    def setRealDataCallBack(self):
+        if not self.callCpp(
+            "NET_DVR_SetRealDataCallBack",
+            self.realHandle,
+            self.generateRealPlayCallBack(),
+            self.userId,
+        ):
+            self.raiseLastError()
+
+    def setStandardDataCallBack(self):
+        if not self.callCpp(
+            "NET_DVR_SetStandardDataCallBack",
+            self.realHandle,
+            self.generateRealPlayCallBack(),
+            self.userId,
+        ):
+            self.raiseLastError()
+
+    def stopPreview(self):
+        if not self.callCpp("NET_DVR_StopRealPlay"):
+            self.raiseLastError()
+
+    def startVoiceCom(self):
+        self.voiceHandle = self.callCpp("NET_DVR_StartVoiceCom", self.userId, self.generateVoiceDataCallBack(), None)  # type: ignore
+        if self.voiceHandle == -1:
+            self.raiseLastError()
+        pass
+
+    def startVoiceComMr(self):
+        self.voiceHandle = self.callCpp("NET_DVR_StartVoiceCom_MR", self.userId, self.generateVoiceDataCallBack(), None)  # type: ignore
+        if self.voiceHandle == -1:
+            self.raiseLastError()
+        pass
+
+    def stopVoiceCom(self):
+        if not self.callCpp("NET_DVR_StopVoiceCom", self.voiceHandle):
+            self.raiseLastError()
+
+    def sdkClean(self):
+        if not self.callCpp("NET_DVR_Cleanup"):
+            self.raiseLastError()
+
+    def getLastError(self) -> int:
+        return int(self.callCpp("NET_DVR_GetLastError"))  # type: ignore
+
+    def logLastError(self, message: str):
+        errorCode = self.getLastError()
+        logger.error(f"{message}, the errorCode is {errorCode}")
+
+    def raiseLastError(self, message: str | None = None):
+        if message is None:
+            message = f"{self.lastCell}() has error"
+
+        errorCode = self.getLastError()
+        raise CameraException(message, errorCode)
+
+    def ptzControlOther(self, channel: int, command: DeviceCommand, action: int):
         """
         :param channel: 通道号
         :param action: 控制动作
         :return:
         """
-        self.call_cpp("NET_DVR_PTZControl", self.userId, channel.value, action)
-        pass
+        if not self.callCpp(
+            "NET_DVR_PTZControl_Other", self.userId, channel, command.value, action
+        ):
+            self.raiseLastError()
 
-    pass
+    realPlayCallBack: Callable[[int, int, c_void_p, int, c_void_p], None] | None = None
 
+    def generateRealPlayCallBack(self):
+
+        if self.realPlayCallBack is not None:
+            return self.realPlayCallBack
+
+        def realPlayCallBack(
+            lRealHandle: int,
+            dwDataType: int,
+            pBuffer: c_void_p,
+            dwBufSize: int,
+            dwUser: c_void_p,
+        ):
+
+            data: bytes = ctypes.string_at(pBuffer, dwBufSize)
+            self.realPlayBroadcaster.publish_nowait(
+                CameraRealPlayData(self, dwDataType, data)
+            )
+            pass
+
+        self.realPlayCallBack = RealPlayCallBackType(realPlayCallBack)
+        return self.realPlayCallBack
+
+    voiceDataCallBack: Callable[[int, c_void_p, int, c_byte, c_void_p], None] | None = None
+
+    def generateVoiceDataCallBack(self):
+
+        if self.voiceDataCallBack is not None:
+            return self.voiceDataCallBack
+
+        def voiceDataCallBack(
+            lVoiceHandle: int,
+            pRecvDataBuffer: c_void_p,
+            dwBufSize: int,
+            byAudioFlag: c_byte,
+            dwUser: c_void_p,
+        ):
+            
+            logger.debug(f"收到语音数据{byAudioFlag} {dwBufSize}") 
+            if byAudioFlag != 1:
+                return
+
+            data: bytes = ctypes.string_at(pRecvDataBuffer, dwBufSize)
+            self.voiceBroadcaster.publish_nowait(CameraVoiceData(self, data))
+
+        self.voiceDataCallBack = VoiceDataCallBackType(voiceDataCallBack)
+        return self.voiceDataCallBack
+
+
+# endregion
 
 camera = None
+
+cap: cv2.VideoCapture = None  # type: ignore
 
 
 async def releaseCap():
     global cap
     if cap and cap.isOpened():
         await asyncio.get_event_loop().run_in_executor(None, cap.release)
-    cap = None
+    cap = None  # type: ignore
     pass
 
 
@@ -340,13 +527,22 @@ async def initCamera():
 
     global camera
 
-    camera = Camera()
-    camera.userId = camera.common_start(cnf)
+    camera = Camera(user, password, ip, port)
+    camera.addSoFromDir(SDKPath)
 
-    camera.ptzControl(DeviceCommand.TILT_UP, 1)
+    camera.initSdk()
+    camera.initG711Decoder()
+    camera.setConnectTime()
+    camera.setReconnect()
+    camera.login()
+    camera.realPlay()
+    camera.setRealDataCallBack()
+    camera.startVoiceComMr()
 
-    asyncio.create_task(readFrames())
-    asyncio.create_task(extractAudio())
+    # camera.ptzControlOther(1, DeviceCommand.TILT_DOWN, 0)
+
+    # asyncio.create_task(readFrames())
+    # asyncio.create_task(extractAudio())
     asyncio.create_task(handleFrames())
     asyncio.create_task(pushFrames())
 
@@ -354,5 +550,6 @@ async def initCamera():
 async def releaseCamera():
     logger.info("释放摄像头资源")
     if camera is not None:
-        camera.logout(camera.userId)
-        camera.sdk_clean()
+        camera.releaseG711Decoder()
+        camera.logout()
+        camera.sdkClean()

@@ -4,12 +4,15 @@ import asyncio
 import logging
 import json
 from typing import *
+from ctypes import Structure
 import re
 import cv2
 import numpy as np
+import platform
 
 from pyorbbecsdk import FormatConvertFilter, VideoFrame, OBFormat, OBConvertFormat
 
+systemPlatFrom = platform.system()
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,12 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
                     q.get_nowait()
                 await q.put(item)
 
+    def publish_nowait(self, item: T) -> None:
+        for q in self.queues:
+                if q.full():
+                    q.get_nowait()
+                q.put_nowait(item)
+        
 
 class FFmpeg:
 
@@ -273,142 +282,6 @@ class FFmpegPushFrame(FFmpegPush):
                 return None
         # 将帧转换为字节流
         return frame.tobytes()
-
-
-# class FFmpegPushFrame:
-#
-#     pushProcess: asyncio.subprocess.Process | None
-#
-#     command: list[str]
-#
-#     width: int
-#     height: int
-#     fps: int
-#     pushRtspUrl: str
-#     framesQueue: asyncio.Queue[cv2.Mat]
-#
-#     def __init__(
-#         self,
-#         width: int,
-#         height: int,
-#         fps: int,
-#         pushRtspUrl: str,
-#         framesQueue: asyncio.Queue[cv2.Mat],
-#         logTag: str,
-#     ):
-#         self.width = width
-#         self.height = height
-#         self.fps = fps
-#         self.pushRtspUrl = pushRtspUrl
-#         self.framesQueue = framesQueue
-#         self.logger = logging.getLogger(logTag)
-#
-#         self.command = [
-#            "ffmpeg",
-#            "-y",
-#            "-f",
-#            "rawvideo",
-#            "-pix_fmt",
-#            "bgr24",
-#            "-s",
-#            f"{width}x{height}",
-#            "-r",
-#            f"{fps}",
-#            "-i",
-#            "-",
-#            "-c:v",
-#            "libx264",
-#            "-preset",
-#            "ultrafast",
-#            "-pix_fmt",
-#            "yuv420p",
-#            "-f",
-#            "rtsp",
-#            "-rtsp_transport",
-#            "tcp",
-#            pushRtspUrl,
-#        ]
-#
-#     async def pushFrames(self):
-#         while True:
-#             try:
-#                 logger.info("正在启动FFmpeg推流进程...")
-#                 # 启动FFmpeg进程
-#                 self.pushProcess = await asyncio.create_subprocess_exec(
-#                     *self.command,
-#                     stdin=asyncio.subprocess.PIPE,
-#                     stdout=asyncio.subprocess.PIPE,
-#                     stderr=asyncio.subprocess.PIPE,
-#                 )
-#
-#                 # 创建一个任务来监控进程的输出和错误
-#                 while True:  # 主循环处理帧
-#                     frame = await self.framesQueue.get()
-#
-#                     # 检查帧尺寸是否匹配预期
-#                     frame_height, frame_width = frame.shape[:2]
-#                     if (frame_width, frame_height) != (self.width, self.height):
-#                        self.logger.warning(
-#                            f"帧尺寸不匹配(期望{self.width}x{self.height}，实际{frame_width}x{frame_height})，正在调整尺寸..."
-#                        )
-#                        try:
-#                            # 使用双线性插值调整尺寸（可根据需求更换插值算法）
-#                            frame = cv2.resize(
-#                                frame,
-#                                (self.width, self.height),
-#                                interpolation=cv2.INTER_LINEAR,
-#                            )
-#                        except Exception as resize_err:
-#                            self.logger.error(
-#                                f"调整帧尺寸失败: {str(resize_err)}，跳过该帧"
-#                            )
-#                            continue
-#
-#                     # 将帧转换为字节流
-#                     data = frame.tobytes()
-#
-#                     # 写入FFmpeg进程的输入管道
-#                     try:
-#                         if self.pushProcess.stdin is not None:
-#                             self.pushProcess.stdin.write(data)
-#                             await self.pushProcess.stdin.drain()  # 确保数据已写入
-#                     except (BrokenPipeError, ConnectionResetError) as e:
-#                         self.logger.error(f"写入FFmpeg进程失败: {e}")
-#                         raise  # 触发外层异常处理重新启动进程
-#
-#                     # 检查FFmpeg进程是否仍在运行
-#                     returncode = self.pushProcess.returncode
-#                     if returncode is not None:
-#                         self.logger.error(
-#                             f"FFmpeg进程异常退出(代码{returncode})，正在重启..."
-#                         )
-#                         raise Exception("FFmpeg进程意外终止")
-#
-#             except asyncio.CancelledError:
-#                 self.logger.info("推流任务被取消，执行清理...")
-#                 await self.releaseProcess()
-#                 break
-#
-#             except Exception as e:
-#                 self.logger.error(f"推流任务异常: {str(e)}")
-#                 await self.releaseProcess()
-#                 self.logger.info(f"5秒后重启")
-#                 await asyncio.sleep(5)
-#
-#     async def releaseProcess(self):
-#
-#         if self.pushProcess is not None and self.pushProcess.stdin is not None:
-#             self.pushProcess.stdin.close()
-#             await self.pushProcess.stdin.wait_closed()
-#
-#             try:
-#                 await asyncio.wait_for(self.pushProcess.wait(), timeout=2)
-#             except asyncio.TimeoutError:
-#                 self.pushProcess.kill()
-#                 await self.pushProcess.wait()
-#
-#             self.pushProcess = None
-#
 
 
 class CircularBuffer:
@@ -826,3 +699,20 @@ def frame_to_bgr_image(frame: VideoFrame) -> Union[Optional[np.array], Any]:
         print("Unsupported color format: {}".format(color_format))
         return None
     return image
+
+
+def isWindows():
+    return systemPlatFrom == "Windows"
+
+
+def isLinux():
+    return systemPlatFrom == "Linux"
+
+
+def fillBuffer(struct_obj : Structure , field_name : str, data):
+    buffer = getattr(struct_obj, field_name)
+    max_len = len(buffer)
+    truncated_data = data[:max_len]
+    buffer[:len(truncated_data)] = truncated_data
+    if len(data) > max_len:
+        logger.warning(f"{field_name} truncated from {len(data)} to {max_len} bytes.")
