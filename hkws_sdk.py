@@ -5,7 +5,7 @@ import util
 
 from ctypes import *
 from typing import *
-from _ctypes import 
+from threading import local
 from enum import IntEnum, unique
 
 logger = logging.getLogger(__name__)
@@ -300,26 +300,29 @@ class NET_DVR_PREVIEWINFO(Structure):
         ("byRes", h_BYTE * 215),
     ]
 
+
 class NET_DVR_AUDIODEC_INFO(Structure):
     _fields_ = [
-        ("nchans", c_int),           # 声道数
-        ("sample_rate", c_int),      # 采样率
-        ("aacdec_profile", c_int),    # 编码框架（保留）
-        ("reserved", c_int * 16)      # 保留字段
+        ("nchans", c_int),  # 声道数
+        ("sample_rate", c_int),  # 采样率
+        ("aacdec_profile", c_int),  # 编码框架（保留）
+        ("reserved", c_int * 16),  # 保留字段
     ]
-    
+
+
 class NET_DVR_AUDIODEC_PROCESS_PARAM(Structure):
     _fields_ = [
-        ("in_buf", c_void_p),                # 输入缓冲区指针
-        ("out_buf", c_void_p),               # 输出缓冲区指针
-        ("in_data_size", c_uint32),          # 输入数据大小
-        ("proc_data_size", c_uint32),        # 已处理数据大小
-        ("out_frame_size", c_uint32),       # 输出帧大小
-        ("dec_info", NET_DVR_AUDIODEC_INFO), # 解码信息结构体
-        ("g726dec_reset", c_int),            # G726重置开关
-        ("g711_type", c_int),                # G711编码类型
-        ("reserved", c_int * 16),            # 保留字段
+        ("in_buf", c_void_p),  # 输入缓冲区指针
+        ("out_buf", c_void_p),  # 输出缓冲区指针
+        ("in_data_size", c_uint32),  # 输入数据大小
+        ("proc_data_size", c_uint32),  # 已处理数据大小
+        ("out_frame_size", c_uint32),  # 输出帧大小
+        ("dec_info", NET_DVR_AUDIODEC_INFO),  # 解码信息结构体
+        ("g726dec_reset", c_int),  # G726重置开关
+        ("g711_type", c_int),  # G711编码类型
+        ("reserved", c_int * 16),  # 保留字段
     ]
+
 
 @unique
 class DeviceCommand(IntEnum):
@@ -502,21 +505,25 @@ def sdkClean():
 
 # region 音频解析
 
+
 def initG711Decoder() -> c_void_p:
-    audioDecoderHandle : c_void_p = callCpp("NET_DVR_InitG711Decoder") # type: ignore
+    audioDecoderHandle: c_void_p = callCpp("NET_DVR_InitG711Decoder")  # type: ignore
     if audioDecoderHandle == None:
         raiseLastError()
     return audioDecoderHandle
-        
-def decodeG711Frame(p : NET_DVR_AUDIODEC_PROCESS_PARAM) -> bytes:
-    '''
-    解码音频数据输出 
-    '''
-    
-        
-def releaseG711Decoder(audioDecoderHandle:c_void_p ):
+
+
+def decodeG711Frame(p: NET_DVR_AUDIODEC_PROCESS_PARAM) -> bytes:
+    """
+    解码音频数据输出
+    """
+    pass
+
+
+def releaseG711Decoder(audioDecoderHandle: c_void_p):
     if not callCpp("NET_DVR_ReleaseG711Decoder", audioDecoderHandle):
         raiseLastError()
+
 
 # endregion
 
@@ -538,7 +545,8 @@ def activateDevice(ip: str, port: int, password: str):
 
 # region 监控登录和注销
 
-def login(ip: str, port: int, user : str,password: str) -> int:
+
+def login(ip: str, port: int, user: str, password: str) -> int:
     userInfo: NET_DVR_USER_LOGIN_INFO = NET_DVR_USER_LOGIN_INFO()
     userInfo.bUseAsynLogin = 0
     util.fillBuffer(userInfo, "sDeviceAddress", bytes(ip, "ascii"))
@@ -550,17 +558,21 @@ def login(ip: str, port: int, user : str,password: str) -> int:
 
     return loginFromInfo(userInfo, deviceInfo)
 
-def loginFromInfo(userInfo: NET_DVR_USER_LOGIN_INFO, deviceInfo :NET_DVR_DEVICEINFO_V40 ) -> int:
-    
+
+def loginFromInfo(
+    userInfo: NET_DVR_USER_LOGIN_INFO, deviceInfo: NET_DVR_DEVICEINFO_V40
+) -> int:
+
     userId = self.callCpp("NET_DVR_Login_V40", byref(userInfo), byref(deviceInfo))  # type: ignore
-    
+
     if userId == -1:
         raiseLastError()
-        
+
     return userId
 
+
 def logout(userId: int):
-    if not callCpp("NET_DVR_Logout", userId ):
+    if not callCpp("NET_DVR_Logout", userId):
         raiseLastError("")
 
 
@@ -569,25 +581,26 @@ def logout(userId: int):
 
 # region 预览
 
+
 def realPlay(userId: int):
     req: NET_DVR_PREVIEWINFO = NET_DVR_PREVIEWINFO()
 
     req.hPlayWnd = None
     req.lChannel = 1  # 预览通道号
-    req.dwStreamType = (
-        0  # 码流类型：0-主码流，1-子码流，2-三码流，3-虚拟码流，以此类推
-    )
+    req.dwStreamType = 0  # 码流类型：0-主码流，1-子码流，2-三码流，3-虚拟码流，以此类推
     req.dwLinkMode = 0  # 连接方式：0-TCP方式，1-UDP方式，2-多播方式，3-RTP方式，4-RTP/RTSP，5-RTP/HTTP,6-HRUDP（可靠传输）
     req.bBlocked = 0  # 0-非阻塞 1-阻塞
 
     return realPlayFromInfo(userId, req)
-        
-def realPlayFromInfo(userId: int, req: NET_DVR_PREVIEWINFO) -> int :
+
+
+def realPlayFromInfo(userId: int, req: NET_DVR_PREVIEWINFO) -> int:
     realHandle = self.callCpp("NET_DVR_RealPlay_V40", userId, byref(req), None, None)  # type: ignore
     if realHandle < 0:
         raiseLastError()
-        
+
     return realHandle
+
 
 def setRealDataCallBack(userId: int, realHandle: int):
     if not callCpp(
@@ -597,38 +610,43 @@ def setRealDataCallBack(userId: int, realHandle: int):
         userId,
     ):
         raiseLastError()
-        
+
+
 def setStandardDataCallBack(userId: int, realHandle: int):
     if not callCpp(
         "NET_DVR_SetStandardDataCallBack",
         realHandle,
-        VoiceDataCallBackType(voiceDataCallBack) ,
+        VoiceDataCallBackType(voiceDataCallBack),
         userId,
     ):
         raiseLastError()
 
-def stopPreview():
-    if not callCpp("NET_DVR_StopRealPlay"):
+
+def stopPreview(realHandle : int ):
+    if not callCpp("NET_DVR_StopRealPlay", realHandle):
         raiseLastError()
-            
-            
+
+
 # endregion
 
 # region 音频
 
-def startVoiceCom(userId : int) -> int:
-    voiceHandle : int= callCpp("NET_DVR_StartVoiceCom", userId, VoiceDataCallBackType(voiceDataCallBack), None)  # type: ignore
+
+def startVoiceCom(userId: int) -> int:
+    voiceHandle: int = callCpp("NET_DVR_StartVoiceCom", userId, VoiceDataCallBackType(voiceDataCallBack), None)  # type: ignore
     if voiceHandle == -1:
         raiseLastError()
     return voiceHandle
 
-def startVoiceComMr(userId:int) -> int:
-    voiceHandle : int = callCpp("NET_DVR_StartVoiceCom_MR", userId, VoiceDataCallBackType(voiceDataCallBack), None)  # type: ignore
+
+def startVoiceComMr(userId: int) -> int:
+    voiceHandle: int = callCpp("NET_DVR_StartVoiceCom_MR", userId, VoiceDataCallBackType(voiceDataCallBack), None)  # type: ignore
     if voiceHandle == -1:
         raiseLastError()
     return voiceHandle
 
-def stopVoiceCom(voiceHandle : int):
+
+def stopVoiceCom(voiceHandle: int):
     if not callCpp("NET_DVR_StopVoiceCom", voiceHandle):
         raiseLastError()
 
@@ -637,38 +655,48 @@ def stopVoiceCom(voiceHandle : int):
 
 # region Bus
 
+voiceOutBuf = local()
+
+
+def getVoiceOutBuf() -> type[Array[c_char]]:
+    if voiceOutBuf.value is None:
+        voiceOutBuf.value = create_string_buffer(1024 * 1024)
+    return voiceOutBuf.value  # type: ignore
+
+
 class CameraRealPlayData:
-    handle : int
+    handle: int
     dataType: int
     data: bytes
     user: c_void_p
 
-    def __init__(self, lRealHandle: int, dwDataType: int, data: bytes, dwUser: c_void_p):
+    def __init__(
+        self, lRealHandle: int, dwDataType: int, data: bytes, dwUser: c_void_p
+    ):
         self.handle = lRealHandle
         self.dataType = dwDataType
         self.data = data
         self.user = dwUser
- 
+
+
 class CameraVoiceData:
-    handle : int
+    handle: int
     data: bytes
-    audioFlag : int
+    audioFlag: int
     user: c_void_p
-    
+
     def __init__(self, handle: int, data: bytes, audioFlag: int, user: c_void_p):
         self.handle = handle
         self.data = data
         self.audioFlag = audioFlag
         self.user = user
 
-    
-        
 
-realPlayBroadcaster: util. Broadcaster[CameraRealPlayData] =  util. Broadcaster()
-voiceBroadcaster: util.  Broadcaster[CameraVoiceData] = util.Broadcaster()
+realPlayBroadcaster: util.Broadcaster[CameraRealPlayData] = util.Broadcaster()
+voiceBroadcaster: util.Broadcaster[CameraVoiceData] = util.Broadcaster()
 
 # endregion
-    
+
 # region 通用回调
 
 RealPlayCallBackType = CFUNCTYPE(None, c_int, c_int, c_void_p, c_int, c_void_p)
@@ -676,26 +704,56 @@ VoiceDataCallBackType = CFUNCTYPE(None, c_int, c_void_p, c_int, c_byte, c_void_p
 
 
 def realPlayCallBack(
-        lRealHandle: int,
-        dwDataType: int,
-        pBuffer: c_void_p,
-        dwBufSize: int,
-        dwUser: c_void_p,
-    ):
+    lRealHandle: int,
+    dwDataType: int,
+    pBuffer: c_void_p,
+    dwBufSize: int,
+    dwUser: c_void_p,
+):
 
-        realPlayBroadcaster.publish_nowait(CameraRealPlayData(lRealHandle, dwDataType, string_at(pBuffer, dwBufSize), dwUser))
-        
+    realPlayBroadcaster.publish_nowait(
+        CameraRealPlayData(
+            lRealHandle, dwDataType, string_at(pBuffer, dwBufSize), dwUser
+        )
+    )
+
 
 def voiceDataCallBack(
-        lVoiceHandle: int,
-        pRecvDataBuffer: c_void_p,
-        dwBufSize: int,
-        byAudioFlag: int,
-        dwUser: c_void_p,
-    ):
-        
-        voiceBroadcaster.publish_nowait(CameraVoiceData(lVoiceHandle, string_at(pRecvDataBuffer, dwBufSize), byAudioFlag, dwUser))
-        
+    lVoiceHandle: int,
+    pRecvDataBuffer: c_void_p,
+    dwBufSize: int,
+    byAudioFlag: int,
+    dwUser: c_void_p,
+):
+
+    p: NET_DVR_AUDIODEC_PROCESS_PARAM = NET_DVR_AUDIODEC_PROCESS_PARAM()
+    p.in_buf = pRecvDataBuffer
+    p.in_data_size = dwBufSize
+    
+
+    voiceBroadcaster.publish_nowait(
+        CameraVoiceData(
+            lVoiceHandle, string_at(pRecvDataBuffer, dwBufSize), byAudioFlag, dwUser
+        )
+    )
+
+
 # endregion
 
+# region 云台控制
 
+def ptzControlOther(userId: int,  channel: int, command: DeviceCommand, action: int):
+    """
+    :param channel: 通道号
+    :param action: 控制动作
+    :return:
+    """
+    if not callCpp(
+        "NET_DVR_PTZControl_Other", userId, channel, command.value, action
+    ):
+        raiseLastError()
+
+# endregion
+
+SDKPath = "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
+addSoFromDir(SDKPath)
