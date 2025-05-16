@@ -5,14 +5,10 @@ import logging
 import json
 import util
 from pathlib import Path
+from main import Component
 
-logger = logging.getLogger(__name__)
 
 CONFIG_FILE_PATH = "/home/elf/light/config.json"
-
-needSave = False
-
-configureMap = {}
 
 
 class ConfigureChangeEvent:
@@ -29,80 +25,85 @@ class ConfigureChangeEvent:
     pass
 
 
-configureChange: util.Broadcaster[ConfigureChangeEvent] = util.Broadcaster()
+class ConfigureComponent(Component):
 
+    needSave: asyncio.Condition = asyncio.Condition()
+    configureMap = {}
 
-async def saveConfigure():
-    global configureMap, needSave
-    with open(CONFIG_FILE_PATH, "w") as file:
-        json.dump(configureMap, file, indent=4)
-        logger.info(f"Configuration saved to {CONFIG_FILE_PATH}: {configureMap}")
-        needSave = False
+    configureChange: util.Broadcaster[ConfigureChangeEvent] = util.Broadcaster()
 
+    async def awakeInit(self):
+        await super().awakeInit()
 
-async def saveConfigureLoop():
-    global needSave
-
-    while True:
         try:
-            await asyncio.sleep(1)
-            if needSave:
-                await saveConfigure()
-        except asyncio.CancelledError:
-            raise
+            # 尝试加载现有配置文件
+            with open(CONFIG_FILE_PATH, "r") as file:
+                self.configureMap = json.load(file)
+                logger.info(f"Loaded config from {CONFIG_FILE_PATH}")
+
+        except FileNotFoundError:
+            # 生成默认配置
+            logger.warning(
+                f"Config file not found, creating default at {CONFIG_FILE_PATH}"
+            )
+
+            # 确保目录存在
+            config_path = Path(CONFIG_FILE_PATH)
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # 写入默认配置
+            with open(CONFIG_FILE_PATH, "w") as file:
+                json.dump({}, file, indent=2)
+                logger.info(f"Created default config at {CONFIG_FILE_PATH}")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON format: {e}")
+            raise RuntimeError("Configuration file format error") from e
+
         except Exception as e:
-            logger.exception(f"保存配置文件时发生异常:{e} ")
-            await asyncio.sleep(5)
+            logger.critical(f"Unexpected config error: {e}")
+            raise RuntimeError("Failed to initialize configuration") from e
 
+        pass
 
-async def initConfigure():
-    global configureMap
+    async def initBack(self):
+        await super().initBack()
 
-    try:
-        # 尝试加载现有配置文件
-        with open(CONFIG_FILE_PATH, "r") as file:
-            configureMap = json.load(file)
-            logger.info(f"Loaded config from {CONFIG_FILE_PATH}")
+        defConfig = util.flattenJson(self.configureMap)
+        for k, v in defConfig.items():
+            await self.configureChange.publish(ConfigureChangeEvent(k, v, None))
+            await asyncio.sleep(0.1)
 
-    except FileNotFoundError:
-        # 生成默认配置
-        logger.warning(f"Config file not found, creating default at {CONFIG_FILE_PATH}")
+        asyncio.create_task(self.saveConfigureLoop())
 
-        # 确保目录存在
-        config_path = Path(CONFIG_FILE_PATH)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
+    def getPriority(self) -> int:
+        return 1 << 12
 
-        # 写入默认配置
+    def getConfigure(self, key: str):
+        return util.getFromJson(key, self.configureMap)
+
+    async def setConfigure(self, key: str, value):
+        old = util.getFromJson(key, self.configureMap)
+        util.setFromJson(key, value, self.configureMap)
+        await self.configureChange.publish(ConfigureChangeEvent(key, value, old))
+        self.needSave.notify_all()
+
+    async def saveConfigure(self):
         with open(CONFIG_FILE_PATH, "w") as file:
-            json.dump({}, file, indent=2)
-            logger.info(f"Created default config at {CONFIG_FILE_PATH}")
+            json.dump(self.configureMap, file, indent=4)
+            logger.info(
+                f"Configuration saved to {CONFIG_FILE_PATH}: {self.configureMap}"
+            )
+            self.needSave.notify_all()
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON format: {e}")
-        raise RuntimeError("Configuration file format error") from e
+    async def saveConfigureLoop(self):
 
-    except Exception as e:
-        logger.critical(f"Unexpected config error: {e}")
-        raise RuntimeError("Failed to initialize configuration") from e
-
-    asyncio.create_task(saveConfigureLoop())
-
-    return configureMap
-
-
-async def releaseConfigure():
-    if needSave:
-        await saveConfigure()
-    pass
-
-
-def getConfigure(key: str):
-    return util.getFromJson(key, configureMap)
-
-
-async def setConfigure(key: str, value):
-    global needSave
-    old = util.getFromJson(key, configureMap)
-    util.setFromJson(key, value, configureMap)
-    await configureChange.publish(ConfigureChangeEvent(key, value, old))
-    needSave = True
+        while True:
+            try:
+                await self.needSave.wait()
+                await self.saveConfigure()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"保存配置文件时发生异常:{e} ")
+                await asyncio.sleep(5)

@@ -5,55 +5,45 @@ import asyncio
 import serial_asyncio
 
 from util import Broadcaster
-
-logger = logging.getLogger(__name__)
-
-loop = asyncio.get_event_loop()
-loop.set_debug(True)
-
-reader: asyncio.StreamReader 
-writer: asyncio.StreamWriter 
-
-usarReader: Broadcaster[bytes] = Broadcaster()
+from main import Component , ConfigField
 
 
-async def asyncReadSerialLoop():
-    """
-    异步循环读取
-    """
-    while True:
-        try:
-            data = await reader.read(1024)
-            await usarReader.publish(data)
-        except Exception as e:
-            logger.exception(f"Error reading from serial: {str(e)}")
-            return
+class UartComponent(Component):
+    
+    url : ConfigField[str] = ConfigField()
+    baudrate : ConfigField[int] = ConfigField()
+    bytesize : ConfigField[int] = ConfigField()
+    parity : ConfigField[str] = ConfigField()
+    stopbits  : ConfigField[int] = ConfigField()
 
+    reader: asyncio.StreamReader = None  # type: ignore
+    writer: asyncio.StreamWriter = None  # type: ignore
+    
+    usarReader: Broadcaster[bytes] = Broadcaster()
 
-async def initUart():
-
-    global reader
-    global writer
-
-    reader, writer = await serial_asyncio.open_serial_connection(
-        url="/dev/ttyS9",
-        baudrate=115200,
-        bytesize=serial_asyncio.serial.EIGHTBITS,
-        parity=serial_asyncio.serial.PARITY_NONE,
-        stopbits=serial_asyncio.serial.STOPBITS_ONE,
-    )
-
-    asyncio.create_task(asyncReadSerialLoop())
-
+    async def init(self):
+        await super().init()
+        self.reader, self.writer = await serial_asyncio.open_serial_connection(
+            url=self.url,
+            baudrate=self.baudrate,
+            bytesize=self.bytesize,
+            parity=self.parity,
+            stopbits=self.stopbits,
+        )
+        asyncio.create_task(self.asyncReadSerialLoop())
     pass
 
-
-async def releaseUart():
-    """
-    释放串口
-    """
-    if writer and not writer.is_closing():
-        writer.close()
-        await writer.wait_closed()
-
-    pass
+    async def release(self):
+        await super().release()
+        if self.writer and not self.writer.is_closing():
+            self.writer.close()
+            await self.writer.wait_closed()
+            
+    async def asyncReadSerialLoop(self):
+        while True:
+            try:
+                data = await self.reader.read(1024)
+                await self.usarReader.publish(data)
+            except Exception as e:
+                self.logger.exception(f"Error reading from serial: {str(e)}")   
+                

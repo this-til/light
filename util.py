@@ -17,6 +17,9 @@ systemPlatFrom = platform.system()
 logger = logging.getLogger(__name__)
 
 
+T = TypeVar("T")  # 定义泛型类型
+
+
 class Box:
 
     x: float = 0
@@ -51,9 +54,6 @@ class Color:
         pass
 
 
-T = TypeVar("T")  # 定义泛型类型
-
-
 class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
     def __init__(self):
         self.queues: list[asyncio.Queue[T]] = []  # 明确队列存储类型
@@ -79,10 +79,10 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
 
     def publish_nowait(self, item: T) -> None:
         for q in self.queues:
-                if q.full():
-                    q.get_nowait()
-                q.put_nowait(item)
-        
+            if q.full():
+                q.get_nowait()
+            q.put_nowait(item)
+
 
 class FFmpeg:
 
@@ -364,7 +364,6 @@ async def gracefulShutdown():
             logging.error(f"Task {task.get_name()} raised an exception:", e)
 
 
-
 def flattenJson(data, parent_key="", sep=".", list_sep="[{}]") -> dict[str, object]:
     items = {}
     if isinstance(data, dict):
@@ -394,8 +393,6 @@ def jsonDeepMerge(source, overrides):
         else:
             source[key] = value
     return source  # 返回修改后的 source
-
-
 
 
 def getFromJson(key: str, ojson: dict) -> object:
@@ -709,10 +706,14 @@ def isLinux():
     return systemPlatFrom == "Linux"
 
 
-def fillBuffer(struct_obj : Structure , field_name : str, data):
+def fillBuffer(struct_obj: Structure, field_name: str, data):
     buffer = getattr(struct_obj, field_name)
     max_len = len(buffer)
     truncated_data = data[:max_len]
-    buffer[:len(truncated_data)] = truncated_data
+    buffer[: len(truncated_data)] = truncated_data
     if len(data) > max_len:
         logger.warning(f"{field_name} truncated from {len(data)} to {max_len} bytes.")
+
+
+def fillStr(source: str, values: dict[str, object]) -> str:
+    return source.format_map(values)

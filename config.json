@@ -1,8 +1,49 @@
 {
-    "yolo": {
-        "open": {
-            "a": false,
-            "b": true
-        }
+    "MqttComponent": {
+        "topic": "user18/project28/device32/device_c71184f09ec6",
+        "clientId": "cat",
+        "ip": "1.94.32.220",
+        "port": "1883",
+        "userName": "til",
+        "password": "123456"
+    },
+    "UartComponent": {
+        "url": "/dev/ttyS9",
+        "baudrate": 115200,
+        "bytesize": 8,
+        "parity": "N",
+        "stopbits": 1
+    },
+    "OrbbecCameraComponent": {
+        "url": "rtsp://localhost:8554/stream2",
+        "width": 640,
+        "height": 480,
+        "fps": 30,
+        "pushRtspUrl": "rtsp://localhost:8554/stream2"
+    },
+    "DetectionComponent": {
+        "OBJ_THRESH": 0.5,
+        "NMS_THRESH": 0.5
+    },
+    "CameraComponent": {
+        "ip": "192.168.117.100",
+        "rtspPort": 554,
+        "sdkPort": 8000,
+        "username": "admin",
+        "password": "qWERTYUIOP",
+        "width": 2560,
+        "height": 1440,
+        "fps": 25,
+        "cameraRtspUrl": "rtsp://{username}:{password}@{ip}:{rtspPort}/Streaming/Channels/101",
+        "pushRtspUrl": "rtsp://localhost:8554/stream1"
+    },
+    "HCNetSdkComponent": {
+        "SDKPath": "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
+    },
+    "AudioComponent": {
+        "frequency": 16000,
+        "size": -16,
+        "channelNumber": 1,
+        "buffer": 4096
     }
 }

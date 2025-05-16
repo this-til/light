@@ -1,8 +1,6 @@
 #!/usr/bin/python3False
 import logging
 import asyncio
-import server
-import device
 import configure
 import signal
 
@@ -12,55 +10,166 @@ import camera
 import orbbec_camera
 import detection
 import audio
+import server
+import device
+import mqtt
+import hkws_sdk
+
+from util import T
+from typing import Generator
 
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-active: bool = True
+
+class ConfigField(Generator[T]):
+
+    default: T = None  # type: ignore
+
+    def __init__(self, default: T | None = None):
+        self.default = default  # type: ignore
+
+    def __get__(self, instance, owner):
+        return self.default
+
+    def __set__(self, instance, value):
+        self.default = value
+
+
+class ComponentMeta(type):
+    def __new__(cls, name, bases, dct):
+        fields = [key for key, value in dct.items() if isinstance(value, ConfigField)]
+        obj = super().__new__(cls, name, bases, dct)
+        obj.configFields = fields  # type: ignore
+        return obj
+
+
+class Component(metaclass=ComponentMeta):
+
+    logger: logging.Logger
+    configFields: list[str] = []
+
+    def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    async def awakeInit(self):
+        if not isinstance(self, configure.ConfigureComponent):
+            for field in self.configFields:
+                setattr(
+                    type(self),
+                    field,
+                    configureComponent.getConfigure(
+                        f"{self.__class__.__name__}.{field}"
+                    ),
+                )
+        pass
+
+    async def init(self):
+        pass
+
+    async def initBack(self):
+        pass
+
+    async def initEnd(self):
+        pass
+
+    async def release(self):
+        pass
+
+    async def exitBack(self):
+        pass
+
+    def getPriority(self) -> int:
+        return 0
+
+    pass
+
+
+configureComponent = configure.ConfigureComponent()
+uartComponent = uart.UartComponent()
+orbbecCameraComponent = orbbec_camera.OrbbecCameraComponent()
+deviceComponent = device.DeviceComponent()
+mqttComponent = mqtt.MqttComponent()
+detectionComponent = detection.DetectionComponent()
+cameraComponent = camera.CameraComponent()
+hkwsSdkComponent = hkws_sdk.HCNetSdkComponent()
+
+components: list[Component] = [
+    configureComponent,
+    uartComponent,
+    orbbecCameraComponent,
+    deviceComponent,
+    mqttComponent,
+    detectionComponent,
+    hkwsSdkComponent,
+    cameraComponent,
+]
 
 
 async def main():
 
-    loop = asyncio.get_running_loop()
-    active = True  # 主循环控制变量
+    components.sort(key=lambda component: component.getPriority(), reverse=True)
+    logger.debug(f"组件排序完成, 组件数量: {len(components)}")
 
-    # 定义信号处理器
-    def _signal_handler():
-        nonlocal active
-        active = False
-        logger.debug("捕获到 Ctrl+C,开始优雅关闭...")
+    for component in components:
+        try:
+            await component.awakeInit()
+        except Exception as e:
+            logger.exception(
+                f"{component.__class__.__name__} awakeInit() 失败, 错误: {e}"
+            )
+            continue
 
-    # 注册 SIGINT 处理器
-    loop.add_signal_handler(signal.SIGINT, _signal_handler)
+    logger.debug("组件awakeInit完成")
+
+    for component in components:
+        try:
+            await component.init()
+        except Exception as e:
+            logger.exception(f"{component.__class__.__name__} init() 失败, 错误: {e}")
+            continue
+
+    logger.debug("组件init完成")
+
+    for component in components:
+        try:
+            await component.initBack()
+        except Exception as e:
+            logger.exception(
+                f"{component.__class__.__name__} initBack() 失败, 错误: {e}"
+            )
+            continue
+
+    logger.debug("组件initBack完成")
 
     try:
-
-        await configure.initConfigure()
-        await uart.initUart()
-        await audio.initAudio()
-        await camera.initCamera()
-        await orbbec_camera.initOrbbecCamera()
-        await server.initServer()
-        await device.initDevice()
-        await detection.initDetection()
-
         await server.runServer()
     finally:
-
         await util.gracefulShutdown()
 
-        await detection.releaseDetection()
-        await device.releaseDevice()
-        await server.releaseServer()
-        await camera.releaseCamera()
-        await orbbec_camera.releaseOrbbecCamera()
-        await audio.releaseAudio()
-        await uart.releaseUart()
-        await configure.releaseConfigure()
+        for component in components:
+            try:
+                await component.release()
+            except Exception as e:
+                logger.exception(
+                    f"{component.__class__.__name__} release() 失败, 错误: {e}"
+                )
+                continue
 
-        pass
+        logger.debug("组件release完成")
+
+        for component in components:
+            try:
+                await component.exitBack()
+            except Exception as e:
+                logger.exception(
+                    f"{component.__class__.__name__} exitBack() 失败, 错误: {e}"
+                )
+                continue
+
+        logger.debug("组件exitBack完成")
 
 
 if __name__ == "__main__":

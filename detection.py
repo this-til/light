@@ -12,11 +12,10 @@ from util import Box, Color
 
 from rknn.api import RKNN
 
-OBJ_THRESH = 0.5
-NMS_THRESH = 0.5
+import main
+from main import Component, ConfigField
 
-
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 inferenceLock = threading.Lock()
 
@@ -69,6 +68,7 @@ class Model:
         self.itemList = itemList
         self.path = path
         self.size = size
+
         pass
 
     def load(self):
@@ -109,7 +109,7 @@ class Model:
 
         with inferenceLock:
             try:
-                res = self.rknn.inference(inputs=[inputImage], data_format='nhwc')
+                res = self.rknn.inference(inputs=[inputImage], data_format="nhwc")
 
             except Exception as e:
                 logger.exception(
@@ -208,7 +208,9 @@ class Model:
         class_max_score = np.max(box_class_probs, axis=-1)
         classes = np.argmax(box_class_probs, axis=-1)
 
-        _class_pos = np.where(class_max_score * box_confidences >= OBJ_THRESH)
+        _class_pos = np.where(
+            class_max_score * box_confidences >= main.detectionComponent.OBJ_THRESH
+        )
         scores = (class_max_score * box_confidences)[_class_pos]
 
         boxes = boxes[_class_pos]
@@ -244,7 +246,7 @@ class Model:
             inter = w1 * h1
 
             ovr = inter / (areas[i] + areas[order[1:]] - inter)
-            inds = np.where(ovr <= NMS_THRESH)[0]
+            inds = np.where(ovr <= main.detectionComponent.NMS_THRESH)[0]
             order = order[inds + 1]
         keep = np.array(keep)
         return keep
@@ -382,39 +384,39 @@ modelMap = {
 models = list(modelMap.values())
 
 
-def runDetection(inputImage: cv2.typing.MatLike , useModel: set[Model] | list[Model]) -> Result:
+class DetectionComponent(Component):
 
-    h, w = inputImage.shape[:2]
-    originalSize: tuple[int, int] = (h, w)
+    OBJ_THRESH: ConfigField[float] = ConfigField()
+    NMS_THRESH: ConfigField[float] = ConfigField()
 
-    cellMap: dict[Model, list[Cell]] = {}
+    async def init(self):
+        for name, model in modelMap.items():
+            model.load()
 
-    sizeMap: dict[tuple[int, int], list[Model]] = {}
+    def runDetection(
+        self, inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]
+    ) -> Result:
 
-    for m in useModel:
+        h, w = inputImage.shape[:2]
+        originalSize: tuple[int, int] = (h, w)
 
-        if m.size not in sizeMap:
-            sizeMap[m.size] = []
+        cellMap: dict[Model, list[Cell]] = {}
 
-        sizeMap[m.size].append(m)
+        sizeMap: dict[tuple[int, int], list[Model]] = {}
 
-    for size, modelList in sizeMap.items():
-        _inputImage = util.changeSize(inputImage, size)
-        _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
+        for m in useModel:
 
-        for m in modelList:
-            cellRes: list[Cell] = m.directRun(_inputImage, originalSize)
-            cellMap[m] = cellRes
+            if m.size not in sizeMap:
+                sizeMap[m.size] = []
 
-    return Result(inputImage, cellMap)
+            sizeMap[m.size].append(m)
 
+        for size, modelList in sizeMap.items():
+            _inputImage = util.changeSize(inputImage, size)
+            _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
 
-async def initDetection():
-    for name, model in modelMap.items():
-        model.load()
+            for m in modelList:
+                cellRes: list[Cell] = m.directRun(_inputImage, originalSize)
+                cellMap[m] = cellRes
 
-    pass
-
-
-async def releaseDetection():
-    pass
+        return Result(inputImage, cellMap)

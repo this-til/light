@@ -35,7 +35,7 @@ async def runServer(config: ServerConfig = ServerConfig()):
     quart_config.debug = config.debug
     
     try:
-        await asyncio.create_task(serve(app, quart_config))
+        await serve(app, quart_config)
     except KeyboardInterrupt:
         logger.info("服务器关闭中...")
             

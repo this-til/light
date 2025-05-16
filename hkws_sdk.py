@@ -8,6 +8,8 @@ from typing import *
 from threading import local
 from enum import IntEnum, unique
 
+from main import Component, ConfigField
+
 logger = logging.getLogger(__name__)
 
 NET_DVR_SYSHEAD = 1  # 系统头数据
@@ -513,13 +515,6 @@ def initG711Decoder() -> c_void_p:
     return audioDecoderHandle
 
 
-def decodeG711Frame(p: NET_DVR_AUDIODEC_PROCESS_PARAM) -> bytes:
-    """
-    解码音频数据输出
-    """
-    pass
-
-
 def releaseG711Decoder(audioDecoderHandle: c_void_p):
     if not callCpp("NET_DVR_ReleaseG711Decoder", audioDecoderHandle):
         raiseLastError()
@@ -563,7 +558,7 @@ def loginFromInfo(
     userInfo: NET_DVR_USER_LOGIN_INFO, deviceInfo: NET_DVR_DEVICEINFO_V40
 ) -> int:
 
-    userId = self.callCpp("NET_DVR_Login_V40", byref(userInfo), byref(deviceInfo))  # type: ignore
+    userId: int = callCpp("NET_DVR_Login_V40", byref(userInfo), byref(deviceInfo))  # type: ignore
 
     if userId == -1:
         raiseLastError()
@@ -595,7 +590,7 @@ def realPlay(userId: int):
 
 
 def realPlayFromInfo(userId: int, req: NET_DVR_PREVIEWINFO) -> int:
-    realHandle = self.callCpp("NET_DVR_RealPlay_V40", userId, byref(req), None, None)  # type: ignore
+    realHandle: int = callCpp("NET_DVR_RealPlay_V40", userId, byref(req), None, None)  # type: ignore
     if realHandle < 0:
         raiseLastError()
 
@@ -622,7 +617,7 @@ def setStandardDataCallBack(userId: int, realHandle: int):
         raiseLastError()
 
 
-def stopPreview(realHandle : int ):
+def stopPreview(realHandle: int):
     if not callCpp("NET_DVR_StopRealPlay", realHandle):
         raiseLastError()
 
@@ -711,6 +706,8 @@ def realPlayCallBack(
     dwUser: c_void_p,
 ):
 
+    # logger.debug(f"realPlayCallBack: {dwDataType}")
+
     realPlayBroadcaster.publish_nowait(
         CameraRealPlayData(
             lRealHandle, dwDataType, string_at(pBuffer, dwBufSize), dwUser
@@ -726,10 +723,9 @@ def voiceDataCallBack(
     dwUser: c_void_p,
 ):
 
-    p: NET_DVR_AUDIODEC_PROCESS_PARAM = NET_DVR_AUDIODEC_PROCESS_PARAM()
-    p.in_buf = pRecvDataBuffer
-    p.in_data_size = dwBufSize
-    
+    # p: NET_DVR_AUDIODEC_PROCESS_PARAM = NET_DVR_AUDIODEC_PROCESS_PARAM()
+    # p.in_buf = pRecvDataBuffer
+    # p.in_data_size = dwBufSize
 
     voiceBroadcaster.publish_nowait(
         CameraVoiceData(
@@ -742,18 +738,38 @@ def voiceDataCallBack(
 
 # region 云台控制
 
-def ptzControlOther(userId: int,  channel: int, command: DeviceCommand, action: int):
+
+def ptzControlOther(userId: int, channel: int, command: DeviceCommand, action: int):
     """
     :param channel: 通道号
     :param action: 控制动作
     :return:
     """
-    if not callCpp(
-        "NET_DVR_PTZControl_Other", userId, channel, command.value, action
-    ):
+    if not callCpp("NET_DVR_PTZControl_Other", userId, channel, command.value, action):
         raiseLastError()
+
 
 # endregion
 
 SDKPath = "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
 addSoFromDir(SDKPath)
+
+
+class HCNetSdkComponent(Component):
+    
+    SDKPath : ConfigField[str ] = ConfigField()
+    
+    async def init(self):
+        await super().init()
+        addSoFromDir(self.SDKPath)
+        initSdk()
+        setConnectTime()
+        setReconnect()
+        
+
+    async def release(self):        
+        sdkClean()
+        pass
+        
+    def getPriority(self) -> int:
+        return 1 << 8
