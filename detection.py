@@ -12,8 +12,8 @@ from util import Box, Color
 
 from rknn.api import RKNN
 
-import main
 from main import Component, ConfigField
+
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ class Model:
         classes = np.argmax(box_class_probs, axis=-1)
 
         _class_pos = np.where(
-            class_max_score * box_confidences >= main.detectionComponent.OBJ_THRESH
+            class_max_score * box_confidences >= OBJ_THRESH
         )
         scores = (class_max_score * box_confidences)[_class_pos]
 
@@ -246,7 +246,7 @@ class Model:
             inter = w1 * h1
 
             ovr = inter / (areas[i] + areas[order[1:]] - inter)
-            inds = np.where(ovr <= main.detectionComponent.NMS_THRESH)[0]
+            inds = np.where(ovr <= NMS_THRESH)[0]
             order = order[inds + 1]
         keep = np.array(keep)
         return keep
@@ -384,6 +384,10 @@ modelMap = {
 models = list(modelMap.values())
 
 
+OBJ_THRESH: float = 0.5
+NMS_THRESH: float = 0.5
+
+
 class DetectionComponent(Component):
 
     OBJ_THRESH: ConfigField[float] = ConfigField()
@@ -392,6 +396,12 @@ class DetectionComponent(Component):
     async def init(self):
         for name, model in modelMap.items():
             model.load()
+
+    async def initEnd(self):
+        await super().initEnd()
+        global OBJ_THRESH, NMS_THRESH
+        OBJ_THRESH = self.OBJ_THRESH
+        NMS_THRESH = self.NMS_THRESH
 
     def runDetection(
         self, inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]

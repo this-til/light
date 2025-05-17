@@ -5,7 +5,7 @@ import logging
 import json
 import util
 from pathlib import Path
-from main import Component
+from main import Component, ConfigField
 
 
 CONFIG_FILE_PATH = "/home/elf/light/config.json"
@@ -27,7 +27,7 @@ class ConfigureChangeEvent:
 
 class ConfigureComponent(Component):
 
-    needSave: asyncio.Condition = asyncio.Condition()
+    needSave: asyncio.Event = asyncio.Event()
     configureMap = {}
 
     configureChange: util.Broadcaster[ConfigureChangeEvent] = util.Broadcaster()
@@ -39,11 +39,11 @@ class ConfigureComponent(Component):
             # 尝试加载现有配置文件
             with open(CONFIG_FILE_PATH, "r") as file:
                 self.configureMap = json.load(file)
-                logger.info(f"Loaded config from {CONFIG_FILE_PATH}")
+                self.logger.info(f"Loaded config from {CONFIG_FILE_PATH}")
 
         except FileNotFoundError:
             # 生成默认配置
-            logger.warning(
+            self.logger.warning(
                 f"Config file not found, creating default at {CONFIG_FILE_PATH}"
             )
 
@@ -54,14 +54,14 @@ class ConfigureComponent(Component):
             # 写入默认配置
             with open(CONFIG_FILE_PATH, "w") as file:
                 json.dump({}, file, indent=2)
-                logger.info(f"Created default config at {CONFIG_FILE_PATH}")
+                self.logger.info(f"Created default config at {CONFIG_FILE_PATH}")
 
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON format: {e}")
+            self.logger.error(f"Invalid JSON format: {e}")
             raise RuntimeError("Configuration file format error") from e
 
         except Exception as e:
-            logger.critical(f"Unexpected config error: {e}")
+            self.logger.critical(f"Unexpected config error: {e}")
             raise RuntimeError("Failed to initialize configuration") from e
 
         pass
@@ -86,15 +86,15 @@ class ConfigureComponent(Component):
         old = util.getFromJson(key, self.configureMap)
         util.setFromJson(key, value, self.configureMap)
         await self.configureChange.publish(ConfigureChangeEvent(key, value, old))
-        self.needSave.notify_all()
+        self.needSave.set()
 
     async def saveConfigure(self):
         with open(CONFIG_FILE_PATH, "w") as file:
             json.dump(self.configureMap, file, indent=4)
-            logger.info(
+            self.logger.info(
                 f"Configuration saved to {CONFIG_FILE_PATH}: {self.configureMap}"
             )
-            self.needSave.notify_all()
+            self.needSave.set()
 
     async def saveConfigureLoop(self):
 
@@ -102,6 +102,7 @@ class ConfigureComponent(Component):
             try:
                 await self.needSave.wait()
                 await self.saveConfigure()
+                self.needSave.clear()
             except asyncio.CancelledError:
                 raise
             except Exception as e:

@@ -7,7 +7,9 @@ import json
 import util
 
 import main
+
 from main import Component, ConfigField
+
 
 class DeviceComponent(Component):
 
@@ -39,7 +41,7 @@ class DeviceComponent(Component):
 
     async def init(self):
         await super().init()
-        await main.uartComponent.usarReader.subscribe(self.uartDataQueue)
+        await self.main.uartComponent.usarReader.subscribe(self.uartDataQueue)
         asyncio.create_task(self.readUartDataLoop())
 
     async def readUartDataLoop(self):

@@ -6,15 +6,7 @@ import camera
 import hkws_sdk
 from hkws_sdk import CameraVoiceData
 from typing import *
-from util import CircularBuffer
-
 from main import Component, ConfigField
-
-
-async def releaseAudio():
-    """Release the audio system."""
-    pygame.mixer.quit()
-    pass
 
 
 class AudioComponent(Component):
@@ -50,6 +42,13 @@ class AudioComponent(Component):
             self.channelPlays.append(queue)
             self.channels.append(channel)
             asyncio.create_task(self.playStreamLoop(queue, channel))
+            
+            
+    async def release(self): 
+        await super().release()
+        for channel in self.channels:
+            channel.stop()
+        pygame.mixer.quit()
 
     async def playStreamLoop(
         self, queue: asyncio.Queue[bytes], channel: pygame.mixer.Channel

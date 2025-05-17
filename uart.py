@@ -5,7 +5,7 @@ import asyncio
 import serial_asyncio
 
 from util import Broadcaster
-from main import Component , ConfigField
+from main import Component, ConfigField
 
 
 class UartComponent(Component):

@@ -10,6 +10,7 @@ from enum import IntEnum, unique
 
 from main import Component, ConfigField
 
+
 logger = logging.getLogger(__name__)
 
 NET_DVR_SYSHEAD = 1  # 系统头数据

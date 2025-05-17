@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")  # 定义泛型类型
 
-
 class Box:
 
     x: float = 0
@@ -87,7 +86,7 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
 class FFmpeg:
 
     command: list[str]
-    process: asyncio.subprocess.Process
+    process: asyncio.subprocess.Process = None # type: ignore
 
     def __init__(self, command: list[str], logTag: str):
         self.logger = logging.getLogger(logTag)

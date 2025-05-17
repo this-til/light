@@ -3,7 +3,7 @@
         "topic": "user18/project28/device32/device_c71184f09ec6",
         "clientId": "cat",
         "ip": "1.94.32.220",
-        "port": "1883",
+        "port": 1883,
         "userName": "til",
         "password": "123456"
     },
