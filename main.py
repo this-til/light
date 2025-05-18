@@ -93,6 +93,7 @@ class Mian:
         from device import DeviceComponent
         from mqtt import MqttComponent
         from hkws_sdk import HCNetSdkComponent
+        from server import ServerComponent
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
@@ -103,6 +104,7 @@ class Mian:
         self.cameraComponent = CameraComponent()
         self.hkwsSdkComponent = HCNetSdkComponent()
         self.audioComponent = AudioComponent()
+        self.serverComponent = ServerComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
@@ -113,6 +115,7 @@ class Mian:
         self.components.append(self.hkwsSdkComponent)
         self.components.append(self.cameraComponent)
         self.components.append(self.audioComponent)
+        self.components.append(self.serverComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
@@ -124,6 +127,7 @@ class Mian:
 
         for component in _components:
             try:
+                logger.debug(f"组件: {component.__class__.__name__} awakeInit()")
                 await component.awakeInit()
             except Exception as e:
                 logger.exception(
@@ -131,10 +135,13 @@ class Mian:
                 )
                 continue
 
+        await asyncio.sleep(0.1)
+
         logger.debug("组件awakeInit完成")
 
         for component in _components:
             try:
+                logger.debug(f"组件: {component.__class__.__name__} init()")
                 await component.init()
             except Exception as e:
                 logger.exception(
@@ -142,10 +149,13 @@ class Mian:
                 )
                 continue
 
+        await asyncio.sleep(0.1)
+
         logger.debug("组件init完成")
 
         for component in _components:
             try:
+                logger.debug(f"组件: {component.__class__.__name__} initBack()")
                 await component.initBack()
             except Exception as e:
                 logger.exception(
@@ -153,16 +163,18 @@ class Mian:
                 )
                 continue
 
+        await asyncio.sleep(0.1)
+
         logger.debug("组件initBack完成")
 
         try:
-            import server
-            await server.runServer()
+            await self.serverComponent.runServer()
         finally:
             await util.gracefulShutdown()
 
             for component in _components:
                 try:
+                    logger.debug(f"组件: {component.__class__.__name__} release()")
                     await component.release()
                 except Exception as e:
                     logger.exception(
@@ -170,16 +182,21 @@ class Mian:
                     )
                     continue
 
+            await asyncio.sleep(0.1)
+
             logger.debug("组件release完成")
 
             for component in _components:
                 try:
+                    logger.debug(f"组件: {component.__class__.__name__} exitBack()")
                     await component.exitBack()
                 except Exception as e:
                     logger.exception(
                         f"{component.__class__.__name__} exitBack() 失败, 错误: {e}"
                     )
                     continue
+
+            await asyncio.sleep(0.1)
 
             logger.debug("组件exitBack完成")
 

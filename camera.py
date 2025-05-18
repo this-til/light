@@ -21,7 +21,6 @@ import main
 from main import Component, ConfigField
 
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +64,7 @@ class CameraComponent(Component):
             self.ip, self.sdkPort, self.username, self.password
         )
 
-        # realHandle = hkws_sdk.realPlay(userId)
+        self.realHandle = hkws_sdk.realPlay(self.userId)
         # hkws_sdk.setRealDataCallBack(userId, realHandle)
         # voiceHandle = hkws_sdk.startVoiceComMr(userId)
 
@@ -75,6 +74,10 @@ class CameraComponent(Component):
         asyncio.create_task(self.readFrames())
         asyncio.create_task(self.handleFrames())
         asyncio.create_task(self.pushFrames())
+
+    async def initBack(self):
+        await super().initBack()
+        await self.audioSource.subscribe(self.main.audioComponent.channelPlays[0])
 
     async def release(self):
         await super().release()
@@ -167,13 +170,16 @@ class CameraComponent(Component):
 
         pass
 
-    def getCameraRtspUrl(self ) -> str : 
-        return util.fillStr(self.cameraRtspUrl, {
-            "username": self.username,
-            "password": self.password,
-            "ip": self.ip,
-            "rtspPort": self.rtspPort,
-        })
+    def getCameraRtspUrl(self) -> str:
+        return util.fillStr(
+            self.cameraRtspUrl,
+            {
+                "username": self.username,
+                "password": self.password,
+                "ip": self.ip,
+                "rtspPort": self.rtspPort,
+            },
+        )
 
     async def pushFrames(self):
         await FFmpegPushFrame(
@@ -188,8 +194,9 @@ class CameraComponent(Component):
 
     async def handleFrames(self):
 
-        framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-        await self.source.subscribe(framesQueue)
+        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+            asyncio.Queue(maxsize=16)
+        )
 
         res: detection.Result | None = None
         task: asyncio.Future[detection.Result] | None = None
@@ -212,7 +219,9 @@ class CameraComponent(Component):
                         inputImage: cv2.typing.MatLike, useModel: list[detection.Model]
                     ):
                         # start_time = time.perf_counter()
-                        res = self.main.detectionComponent.runDetection(inputImage, useModel)
+                        res = self.main.detectionComponent.runDetection(
+                            inputImage, useModel
+                        )
                         # end_time = time.perf_counter()
                         # duration_ms = (end_time - start_time) * 1000
                         # logger.info(f"inference 耗时: {duration_ms:.3f}ms")

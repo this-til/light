@@ -6,48 +6,19 @@ import threading
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
 import logging
-import device
 import configure
 from quart_cors import cors
 from enum import Enum
+from main import Component, ConfigField
 
 logger = logging.getLogger(__name__)
 
 
-
 app = Quart(__name__)
-app = cors(app, allow_origin="*") 
+app = cors(app, allow_origin="*")
 
 
-
-# 自定义配置示例
-class ServerConfig:
-    host = "0.0.0.0"
-    port = 8000
-    workers = 2
-    debug = True
-    
-async def runServer(config: ServerConfig = ServerConfig()):
-
-    quart_config = Config()
-    quart_config.bind = [f"{config.host}:{config.port}"]
-    quart_config.workers = config.workers
-    quart_config.debug = config.debug
-    
-    try:
-        await serve(app, quart_config)
-    except KeyboardInterrupt:
-        logger.info("服务器关闭中...")
-            
-    pass
-    
-    
-async def initServer():
-    pass
-
-async def releaseServer():
-    await app.shutdown()
-    pass
+serverComponent: "ServerComponent" = None  # type: ignore
 
 
 class Status(Enum):
@@ -64,18 +35,18 @@ def createCarrier(data, status: Enum = Status.SUCCESS, message: str | None = Non
 
 @app.route("/getDeviceValues")
 async def getDeviceValues():
-    return createCarrier(device.deviceValue)
+    return createCarrier(serverComponent.main.deviceComponent.deviceValue)
 
 
 @app.route("/getDeviceValue")
 async def getDeviceValue():
-    key : str = str(request.args.get("key"))
-    return createCarrier(device.getDeviceValue(key))
+    key: str = str(request.args.get("key"))
+    return createCarrier(serverComponent.main.deviceComponent.getDeviceValue(key))
 
 
 @app.route("/setDeviceValue", methods=["POST"])
 async def setDeviceValue():
-    key : str = str(request.args.get("key"))
+    key: str = str(request.args.get("key"))
     data = await request.get_json()
     value = data.get("value")
     return createCarrier(device.setDeviceValue(key, value))
@@ -83,18 +54,46 @@ async def setDeviceValue():
 
 @app.route("/getConfigure")
 async def getConfigure():
-    key : str = str(request.args.get("key"))
-    return createCarrier(configure.getConfigure(key))
+    key: str = str(request.args.get("key"))
+    return createCarrier(serverComponent.main.configureComponent.getConfigure(key))
 
 
 @app.route("/setConfigure", methods=["POST"])
 async def setConfigure():
-    key : str = str(request.args.get("key"))
+    key: str = str(request.args.get("key"))
     data = await request.get_json()
     value = data.get("value")
-    return createCarrier(await configure.setConfigure(key, value))
+    return createCarrier(
+        await serverComponent.main.configureComponent.setConfigure(key, value)
+    )
 
 
 @app.errorhandler(Exception)
 async def http_exception_handler(e):
     return createCarrier(None, status=Status.FAIL, message=e.description), e.code
+
+
+class ServerComponent(Component):
+    host: ConfigField[str] = ConfigField()
+    port: ConfigField[int] = ConfigField()
+    workers: ConfigField[int] = ConfigField()
+    debug: ConfigField[bool] = ConfigField()
+
+    def __init__(self):
+        super().__init__()
+        global serverComponent
+        serverComponent = self
+
+    async def runServer(self):
+        quart_config = Config()
+        quart_config.bind = [f"{self.host}:{self.port}"]
+        quart_config.workers = self.workers
+        quart_config.debug = self.debug
+
+        try:
+            # await serve(app, quart_config)
+            await asyncio.create_task(serve(app, quart_config))
+        except KeyboardInterrupt:
+            logger.info("服务器关闭中...")
+
+        pass

@@ -101,8 +101,9 @@ class OrbbecCameraComponent(Component):
 
     async def handleFrames(self):
 
-        framesQueue: asyncio.Queue[cv2.typing.MatLike] = asyncio.Queue(maxsize=16)
-        await self.source.subscribe(framesQueue)
+        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+            asyncio.Queue(maxsize=16)
+        )
 
         while True:
             try:

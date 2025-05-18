@@ -35,6 +35,27 @@ class MqttComponent(Component):
         self.client.loop_start()  # 使用非阻塞循环
 
         self.client.publish(self.topic, json.dumps({"温度": 23}))
+        
+        asyncio.create_task(self.upDateLoop())
+        
+    async def upDateLoop(self):
+        
+        event = await self.main.deviceComponent.dataUpdate.subscribe(asyncio.Event())
+        
+        while True:
+            
+            try:
+                await event.wait()
+                event.clear()
+            
+            
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"发布数据时发生异常: {str(e)}")
+        
+        
 
     def onConnect(self, client, userdata, flags, rc):
         if rc == 0:

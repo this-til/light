@@ -53,15 +53,17 @@ class Color:
         pass
 
 
-class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
+class Broadcaster(Generic[T]):
+    
+    
     def __init__(self):
-        self.queues: list[asyncio.Queue[T]] = []  # 明确队列存储类型
-        self.lock = asyncio.Lock()
+        self.queues: list[asyncio.Queue[T]] = []
+        self.lock = asyncio.Lock()    
+        pass
 
-    async def subscribe(
-        self, queue: asyncio.Queue[T]
-    ) -> asyncio.Queue[T]:  # 订阅的队列类型与泛型一致
+    async def subscribe(self, queue: asyncio.Queue[T]) -> asyncio.Queue[T]:  
         async with self.lock:
+            logger.debug("Broadcaster.subscribe()")
             self.queues.append(queue)
         return queue
 
@@ -69,7 +71,7 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
         async with self.lock:
             self.queues.remove(queue)
 
-    async def publish(self, item: T) -> None:  # 发布项类型与泛型一致
+    async def publish(self, item: T) -> None:
         async with self.lock:
             for q in self.queues:
                 if q.full():
@@ -82,6 +84,35 @@ class Broadcaster(Generic[T]):  # 继承 Generic 标记泛型类型
                 q.get_nowait()
             q.put_nowait(item)
 
+
+class EventBroadcaster :
+    
+    events: list[asyncio.Event] = []
+    lock = asyncio.Lock()
+    
+    async def subscribe(self, event: asyncio.Event) -> asyncio.Event:
+        async with self.lock:
+            self.events.append(event)
+            event.clear()
+        return event
+    
+    async def unsubscribe(self, event: asyncio.Event) -> None:
+        async with self.lock:
+            self.events.remove(event)
+    
+    async def setEvent(self):
+        async with self.lock:
+            for event in self.events:
+                event.set()
+                
+    def setEvent_nowait(self):
+        for event in self.events:
+            event.set()
+    
+    async def clearEvent(self):
+        async with self.lock:
+            for event in self.events:
+                event.clear()
 
 class FFmpeg:
 

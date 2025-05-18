@@ -22,8 +22,6 @@ class ConfigureChangeEvent:
         self.value = value
         self.oldValue = oldValue
 
-    pass
-
 
 class ConfigureComponent(Component):
 
@@ -31,6 +29,10 @@ class ConfigureComponent(Component):
     configureMap = {}
 
     configureChange: util.Broadcaster[ConfigureChangeEvent] = util.Broadcaster()
+
+    def __init__(self):
+        super().__init__()
+        self.needSave.clear()
 
     async def awakeInit(self):
         await super().awakeInit()
@@ -58,16 +60,14 @@ class ConfigureComponent(Component):
 
         except json.JSONDecodeError as e:
             self.logger.error(f"Invalid JSON format: {e}")
-            raise RuntimeError("Configuration file format error") from e
 
         except Exception as e:
             self.logger.critical(f"Unexpected config error: {e}")
-            raise RuntimeError("Failed to initialize configuration") from e
 
         pass
 
-    async def initBack(self):
-        await super().initBack()
+    async def initEnd(self):
+        await super().initEnd()
 
         defConfig = util.flattenJson(self.configureMap)
         for k, v in defConfig.items():
@@ -103,6 +103,7 @@ class ConfigureComponent(Component):
                 await self.needSave.wait()
                 await self.saveConfigure()
                 self.needSave.clear()
+                await asyncio.sleep(5)
             except asyncio.CancelledError:
                 raise
             except Exception as e:

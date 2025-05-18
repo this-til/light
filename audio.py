@@ -22,10 +22,10 @@ class AudioComponent(Component):
         await super().init()
 
         pygame.mixer.init(
-            frequency=camera.FREQUENCY,
-            size=camera.SAMPLE_SIZE,
-            channels=camera.CHANNELS,
-            buffer=camera.BUFFER_SIZE,
+            frequency=self.frequency,
+            size=self.size,
+            channels=self.channelNumber,
+            buffer=self.buffer,
         )
 
         pygame.mixer.init()
@@ -49,6 +49,9 @@ class AudioComponent(Component):
         for channel in self.channels:
             channel.stop()
         pygame.mixer.quit()
+
+    def getPriority(self) -> int:
+        return 1 << 6
 
     async def playStreamLoop(
         self, queue: asyncio.Queue[bytes], channel: pygame.mixer.Channel
