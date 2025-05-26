@@ -363,15 +363,15 @@ class Result:
 
 
 accident = Item("accident", Color(255, 0, 0))
-car_accident_model = Model(
-    "car_accident", [accident], "/home/elf/light/model/car_accident.rknn"
+carAccidentModel = Model(
+    "car_accident", [accident], "/home/elf/light/model/carAccident.rknn"
 )
 
 
-fall_down = Item("fall down", Color(255, 150, 51))
-stand_person = Item("stand person", Color(100, 255, 100))
-fall_down_model = Model(
-    "fall_down", [fall_down, stand_person], "/home/elf/light/model/fall_down.rknn"
+fallDown = Item("fall down", Color(255, 150, 51))
+standPerson = Item("stand person", Color(100, 255, 100))
+fallDownModel = Model(
+    "fall_down", [fallDown, standPerson], "/home/elf/light/model/fallDown.rknn"
 )
 
 
@@ -400,8 +400,8 @@ accumulatedWaterModel = Model(
 
 
 modelMap = {
-    car_accident_model.name: car_accident_model,
-    fall_down_model.name: fall_down_model,
+    fallDownModel.name: fallDownModel,
+    carAccidentModel.name: carAccidentModel,
 }
 
 models = list(modelMap.values())
