@@ -5,12 +5,14 @@ import asyncio
 import logging
 import numpy as np
 import util
+import detection
 from util import Broadcaster, FFmpegPushFrame
 from pyorbbecsdk import *
 from main import Component, ConfigField
 
 
 class OrbbecCameraComponent(Component):
+    
     url: ConfigField[str] = ConfigField()
     width: ConfigField[int] = ConfigField()
     height: ConfigField[int] = ConfigField()
@@ -21,7 +23,7 @@ class OrbbecCameraComponent(Component):
     pipeline: Pipeline | None = None
 
     source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
-    out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+    identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
     async def init(self):
         await super().init()
@@ -102,14 +104,18 @@ class OrbbecCameraComponent(Component):
     async def handleFrames(self):
 
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
-            asyncio.Queue(maxsize=16)
+            asyncio.Queue(maxsize=1)
         )
 
         while True:
             try:
-                sourceFrame = await framesQueue.get()
-                await self.out.publish(sourceFrame)
-
+               frame = await framesQueue.get()
+               
+               await asyncio.get_event_loop().run_in_executor(
+                   None, self.main.detectionComponent.runDetection, frame, [detection.faceModel]
+               )
+               
+               await asyncio.sleep(3)  
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -126,3 +132,4 @@ class OrbbecCameraComponent(Component):
             __name__,
         ).loop()
         pass
+      

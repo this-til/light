@@ -364,14 +364,14 @@ class Result:
 
 accident = Item("accident", Color(255, 0, 0))
 carAccidentModel = Model(
-    "car_accident", [accident], "/home/elf/light/model/carAccident.rknn"
+    "carAccident", [accident], "/home/elf/light/model/carAccident.rknn"
 )
 
 
 fallDown = Item("fall down", Color(255, 150, 51))
 standPerson = Item("stand person", Color(100, 255, 100))
 fallDownModel = Model(
-    "fall_down", [fallDown, standPerson], "/home/elf/light/model/fallDown.rknn"
+    "fallDown", [fallDown, standPerson], "/home/elf/light/model/fallDown.rknn"
 )
 
 
