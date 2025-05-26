@@ -208,9 +208,7 @@ class Model:
         class_max_score = np.max(box_class_probs, axis=-1)
         classes = np.argmax(box_class_probs, axis=-1)
 
-        _class_pos = np.where(
-            class_max_score * box_confidences >= OBJ_THRESH
-        )
+        _class_pos = np.where(class_max_score * box_confidences >= OBJ_THRESH)
         scores = (class_max_score * box_confidences)[_class_pos]
 
         boxes = boxes[_class_pos]
@@ -375,6 +373,31 @@ stand_person = Item("stand person", Color(100, 255, 100))
 fall_down_model = Model(
     "fall_down", [fall_down, stand_person], "/home/elf/light/model/fall_down.rknn"
 )
+
+
+electricBicycle = Item("电动车", Color(255, 0, 255))
+bicycle = Item("自行车", Color(255, 128, 255))
+bus = Item("公交", Color(255, 255, 0))
+car = Item("汽车", Color(0, 0, 255))
+person = Item("行人", Color(0, 255, 0))
+truck = Item("卡车", Color(255, 0, 0))
+carModel = Model(
+    "car",
+    [electricBicycle, bicycle, bus, car, person, truck],
+    "/home/elf/light/model/car.rknn",
+)
+
+
+face = Item("人脸", Color(255, 255, 255))
+faceModel = Model("face", [face], "/home/elf/light/model/face.rknn")
+
+accumulatedWater = Item("积水", Color(0, 0, 255))
+accumulatedWaterModel = Model(
+    "accumulated_water",
+    [accumulatedWater],
+    "/home/elf/light/model/accumulated_water.rknn",
+)
+
 
 modelMap = {
     car_accident_model.name: car_accident_model,

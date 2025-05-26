@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 class MqttComponent(Component):
 
-    topic: ConfigField[str] = ConfigField()
+    receiveTopic: ConfigField[str] = ConfigField()
+    updataTopic : ConfigField[str] = ConfigField()
     clientId: ConfigField[str] = ConfigField()
     ip: ConfigField[str] = ConfigField()
     port: ConfigField[int] = ConfigField()
@@ -25,7 +26,8 @@ class MqttComponent(Component):
 
         self.client = mqtt.Client(client_id=self.clientId)
 
-        self.client.subscribe(self.topic)
+        self.client.subscribe(self.receiveTopic)
+        self.client.subscribe(self.updataTopic)
 
         self.client.on_connect = self.onConnect
         self.client.on_message = self.onMessage
@@ -34,28 +36,44 @@ class MqttComponent(Component):
         self.client.connect(self.ip, self.port)
         self.client.loop_start()  # 使用非阻塞循环
 
-        self.client.publish(self.topic, json.dumps({"温度": 23}))
-        
         asyncio.create_task(self.upDateLoop())
-        
+
     async def upDateLoop(self):
-        
+
         event = await self.main.deviceComponent.dataUpdate.subscribe(asyncio.Event())
-        
+
         while True:
-            
+
             try:
                 await event.wait()
                 event.clear()
-            
-            
+                data = self.main.deviceComponent.deviceValue
+                modbus = data["Modbus"]
+                weather = modbus["Weather"]
+
+                windSpeed = modbus["Wind_Speed"]
+
+                self.client.publish(
+                    self.updataTopic,
+                    json.dumps(
+                        {
+                            "湿度": weather["Humidity"],
+                            "温度": weather["Temperature"],
+                            "PM10": weather["PM10"],
+                            "PM2.5": weather["PM2.5"],
+                            "光照" : weather["Illuminance"],
+                        
+                            "风速": windSpeed["Wind_Speed"],
+                            "风向": windSpeed["Wind_Direction"],
+                        }
+                    ),
+                )
+
                 await asyncio.sleep(5)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"发布数据时发生异常: {str(e)}")
-        
-        
 
     def onConnect(self, client, userdata, flags, rc):
         if rc == 0:

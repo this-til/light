@@ -61,7 +61,7 @@ class DeviceComponent(Component):
 
     deviceValue = {}
 
-    commandId: int = 0
+    commandId: int = 1
     commandIdMap: dict[int, Command] = {}
 
     dataUpdate: util.EventBroadcaster = util.EventBroadcaster()

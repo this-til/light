@@ -90,6 +90,7 @@ class UartComponent(Component):
                 raise
             except Exception as e:
                 self.logger.exception(f"Error reading from serial: {str(e)}")
+                await asyncio.sleep(5)
                 
     def write(self, data: bytes):
         self.uart.write(data)

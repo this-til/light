@@ -1,10 +1,11 @@
 {
     "MqttComponent": {
-        "topic": "user18/project28/device32/device_c71184f09ec6",
+        "receiveTopic": "user18/project28/device32/device_c71184f09ec6",
+        "updataTopic": "user18/project28/device32/updata",
         "clientId": "cat",
         "ip": "1.94.32.220",
         "port": 1883,
-        "userName": "til",
+        "userName": "cloud",
         "password": "123456"
     },
     "UartComponent": {
@@ -58,5 +59,10 @@
     "Device": {
         "Gear": 1000,
         "Switch": 0
+    },
+    "MicrophoneComponent": {
+        "framesPerBuffer" : 2048,
+        "rate": 44100,
+        "channels": 0
     }
 }

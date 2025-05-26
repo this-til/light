@@ -42,9 +42,15 @@ class AudioComponent(Component):
             self.channelPlays.append(queue)
             self.channels.append(channel)
             asyncio.create_task(self.playStreamLoop(queue, channel))
-            
-            
-    async def release(self): 
+
+    async def initBack(self):
+        await super().initBack()
+
+        # TODO 测试
+
+        await self.main.microphoneComponent.collectSound.subscribe(self.channelPlays[0])
+
+    async def release(self):
         await super().release()
         for channel in self.channels:
             channel.stop()
