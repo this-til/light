@@ -3,6 +3,7 @@ import sys
 import logging
 import util
 
+import _ctypes
 from ctypes import *
 from typing import *
 from threading import local
@@ -327,6 +328,16 @@ class NET_DVR_AUDIODEC_PROCESS_PARAM(Structure):
     ]
 
 
+class NET_DVR_PTZPOS(Structure):
+    _fields_ = [
+        ("wAction", c_uint16),
+        ("wPanPos", c_uint16),
+        ("wTiltPos", c_uint16),
+        ("wZoomPos", c_uint16),
+    ]
+    pass
+
+
 @unique
 class DeviceCommand(IntEnum):
     """
@@ -538,7 +549,6 @@ def activateDevice(ip: str, port: int, password: str):
 
 # endregion
 
-
 # region 监控登录和注销
 
 
@@ -573,7 +583,6 @@ def logout(userId: int):
 
 
 # endregion
-
 
 # region 预览
 
@@ -750,6 +759,31 @@ def ptzControlOther(userId: int, channel: int, command: DeviceCommand, action: i
         raiseLastError()
 
 
+def setDevConfig(
+    userId: int,
+    dwCommand: int,
+    lChannel: int,
+    lpInBuffer: _ctypes._CArgObject,
+    dwInBufferSize: int,
+):
+    if not callCpp(
+        "NET_DVR_SetDVRConfig", userId, dwCommand, lChannel, lpInBuffer, dwInBufferSize
+    ):
+        raiseLastError()
+
+
+def setDevPtzposConfig(userId: int, lChannel: int, p : int , t : int, z :int ):
+    NET_DVR_SET_PTZPOS = 292
+    
+    ptzpos : NET_DVR_PTZPOS = NET_DVR_PTZPOS()
+    ptzpos.wAction = 1
+    ptzpos.wPanPos = p
+    ptzpos.wTiltPos = t
+    ptzpos.wZoomPos = z
+    
+    setDevConfig(userId, NET_DVR_SET_PTZPOS,lChannel , byref(ptzpos), sizeof(NET_DVR_PTZPOS))
+
+
 # endregion
 
 SDKPath = "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
@@ -757,20 +791,19 @@ addSoFromDir(SDKPath)
 
 
 class HCNetSdkComponent(Component):
-    
-    SDKPath : ConfigField[str ] = ConfigField()
-    
+
+    SDKPath: ConfigField[str] = ConfigField()
+
     async def init(self):
         await super().init()
         addSoFromDir(self.SDKPath)
         initSdk()
         setConnectTime()
         setReconnect()
-        
 
-    async def release(self):        
+    async def release(self):
         sdkClean()
         pass
-        
+
     def getPriority(self) -> int:
         return 1 << 8

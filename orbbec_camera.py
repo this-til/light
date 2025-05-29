@@ -89,6 +89,7 @@ class OrbbecCameraComponent(Component):
                     await self.source.publish(color_image)
 
                     pass
+                
             except asyncio.CancelledError:
                 if pipeline is not None:
                     pipeline.stop()

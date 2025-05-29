@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")  # 定义泛型类型
 
+
 class Box:
 
     x: float = 0
@@ -54,14 +55,13 @@ class Color:
 
 
 class Broadcaster(Generic[T]):
-    
-    
+
     def __init__(self):
         self.queues: list[asyncio.Queue[T]] = []
-        self.lock = asyncio.Lock()    
+        self.lock = asyncio.Lock()
         pass
 
-    async def subscribe(self, queue: asyncio.Queue[T]) -> asyncio.Queue[T]:  
+    async def subscribe(self, queue: asyncio.Queue[T]) -> asyncio.Queue[T]:
         async with self.lock:
             logger.debug("Broadcaster.subscribe()")
             self.queues.append(queue)
@@ -85,39 +85,40 @@ class Broadcaster(Generic[T]):
             q.put_nowait(item)
 
 
-class EventBroadcaster :
-    
+class EventBroadcaster:
+
     events: list[asyncio.Event] = []
     lock = asyncio.Lock()
-    
+
     async def subscribe(self, event: asyncio.Event) -> asyncio.Event:
         async with self.lock:
             self.events.append(event)
             event.clear()
         return event
-    
+
     async def unsubscribe(self, event: asyncio.Event) -> None:
         async with self.lock:
             self.events.remove(event)
-    
+
     async def setEvent(self):
         async with self.lock:
             for event in self.events:
                 event.set()
-                
+
     def setEvent_nowait(self):
         for event in self.events:
             event.set()
-    
+
     async def clearEvent(self):
         async with self.lock:
             for event in self.events:
                 event.clear()
 
+
 class FFmpeg:
 
     command: list[str]
-    process: asyncio.subprocess.Process = None # type: ignore
+    process: asyncio.subprocess.Process = None  # type: ignore
 
     def __init__(self, command: list[str], logTag: str):
         self.logger = logging.getLogger(logTag)
@@ -747,3 +748,29 @@ def fillBuffer(struct_obj: Structure, field_name: str, data):
 
 def fillStr(source: str, values: dict[str, object]) -> str:
     return source.format_map(values)
+
+
+def HexToDecMa(wHex: int) -> int:
+    """
+    将16进制数（以整数形式表示）转换为伪十进制形式
+    例如：0x1234 -> 1234（整数形式，不是真正的十进制值）
+    """
+    return (
+        (wHex // 4096) * 1000
+        + ((wHex % 4096) // 256) * 100
+        + ((wHex % 256) // 16) * 10
+        + (wHex % 16)
+    )
+
+
+def DEC2HEX_doc(x: int) -> int:
+    """
+    将伪十进制形式转换回16进制数（整数形式）
+    例如：1234 -> 0x1234（返回整数4660）
+    """
+    return (
+        (x // 1000) * 4096
+        + ((x % 1000) // 100) * 256
+        + ((x % 100) // 10) * 16
+        + (x % 10)
+    )
