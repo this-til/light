@@ -14,14 +14,12 @@ from rknn.api import RKNN
 
 from main import Component, ConfigField
 
-
 logger: logging.Logger = logging.getLogger(__name__)
 
 inferenceLock = threading.Lock()
 
 
 class Item:
-
     name: str
     color: Color
 
@@ -34,7 +32,6 @@ class Item:
 
 
 class Cell:
-
     item: Item
     box: Box
     probability: float
@@ -49,7 +46,6 @@ class Cell:
 
 
 class Model:
-
     name: str
     itemList: list[Item]
     path: str
@@ -57,19 +53,18 @@ class Model:
 
     rknn: RKNN = None  # type: ignore
 
-    detectionComponent : 'DetectionComponent' = None # type: ignore
+    detectionComponent: 'DetectionComponent' = None  # type: ignore
 
     def __init__(
-        self,
-        name: str,
-        itemList: list[Item],
-        path: str,
-        detectionComponent : 'detectionComponent',
-        size: tuple[int, int] = (640, 640),
+            self,
+            name: str,
+            itemList: list[Item],
+            detectionComponent: 'DetectionComponent',
+            size: tuple[int, int] = (640, 640),
     ):
         self.name = name
         self.itemList = itemList
-        self.path = path
+        self.detectionComponent = detectionComponent
         self.size = size
 
         pass
@@ -80,6 +75,8 @@ class Model:
             return
 
         self.rknn = RKNN()
+
+        self.path = f"{self.detectionComponent.modelPath}/{self.name}.rknn"
         self.rknn.load_rknn(self.path)
 
         logger.info(f"load rknn model: {self.path}")
@@ -107,7 +104,7 @@ class Model:
         return self.directRun(inputImage, originalSize)
 
     def directRun(
-        self, inputImage: cv2.typing.MatLike, originalSize: tuple[int, int]
+            self, inputImage: cv2.typing.MatLike, originalSize: tuple[int, int]
     ) -> list[Cell]:
 
         with inferenceLock:
@@ -116,7 +113,7 @@ class Model:
 
             except Exception as e:
                 logger.exception(
-                    f"thie {self.path} model inference raise Exception: {str(e)} "
+                    f"this {self.path} model inference raise Exception: {str(e)} "
                 )
                 return []
 
@@ -126,7 +123,7 @@ class Model:
 
         if boxes is not None:
             for box, score, cl in zip(
-                util.realBox(boxes, originalSize, self.size), scores, classes  # type: ignore
+                    util.realBox(boxes, originalSize, self.size), scores, classes  # type: ignore
             ):
                 outList.append(Cell(self.itemList[cl], box, score))
                 pass
@@ -268,14 +265,13 @@ class Model:
 
 
 class Result:
-
     inputImage: cv2.typing.MatLike
     outputImage: cv2.typing.MatLike | None
 
     cellMap: dict[Model, list[Cell]] = {}
 
     def __init__(
-        self, inputImage: cv2.typing.MatLike, cellMap: dict[Model, list[Cell]]
+            self, inputImage: cv2.typing.MatLike, cellMap: dict[Model, list[Cell]]
     ):
         self.inputImage = inputImage
         self.outputImage = None
@@ -365,49 +361,56 @@ class Result:
         return self.outputImage
 
 
-accident = Item("accident", Color(255, 0, 0))
-carAccidentModel = Model(
-    "carAccident", [accident], "/home/elf/light/model/carAccident.rknn"
-)
+class CarAccidentModel(Model):
+    accident = Item("accident", Color(255, 0, 0))
+
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__("accident", [self.accident], detectionComponent)
 
 
-fallDown = Item("fall down", Color(255, 150, 51))
-standPerson = Item("stand person", Color(100, 255, 100))
-fallDownModel = Model(
-    "fallDown", [fallDown, standPerson], "/home/elf/light/model/fallDown.rknn"
-)
+class FallDownModel(Model):
+    fallDown = Item("fall down", Color(255, 150, 51))
+    standPerson = Item("stand person", Color(100, 255, 100))
+
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__("accident", [self.fallDown, self.standPerson], detectionComponent)
 
 
-electricBicycle = Item("电动车", Color(255, 0, 255))
-bicycle = Item("自行车", Color(255, 128, 255))
-bus = Item("公交", Color(255, 255, 0))
-car = Item("汽车", Color(0, 0, 255))
-person = Item("行人", Color(0, 255, 0))
-truck = Item("卡车", Color(255, 0, 0))
-carModel = Model(
-    "car",
-    [electricBicycle, bicycle, bus, car, person, truck],
-    "/home/elf/light/model/car.rknn",
-)
+class CarModel(Model):
+    electricBicycle = Item("电动车", Color(255, 0, 255))
+    bicycle = Item("自行车", Color(255, 128, 255))
+    bus = Item("公交", Color(255, 255, 0))
+    car = Item("汽车", Color(0, 0, 255))
+    person = Item("行人", Color(0, 255, 0))
+    truck = Item("卡车", Color(255, 0, 0))
+
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__(
+            "car",
+            [
+                self.electricBicycle,
+                self.bicycle,
+                self.bus,
+                self.car,
+                self.person,
+                self.truck
+            ],
+            detectionComponent
+        )
 
 
-face = Item("人脸", Color(255, 255, 255))
-faceModel = Model("face", [face], "/home/elf/light/model/face.rknn")
+class FaceModel(Model):
+    face = Item("人脸", Color(255, 255, 255))
 
-accumulatedWater = Item("积水", Color(0, 0, 255))
-accumulatedWaterModel = Model(
-    "accumulated_water",
-    [accumulatedWater],
-    "/home/elf/light/model/accumulated_water.rknn",
-)
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__("face", [self.face], detectionComponent)
 
 
-modelMap = {
-    fallDownModel.name: fallDownModel,
-    carAccidentModel.name: carAccidentModel,
-}
+class AccumulatedWater(Model):
+    accumulatedWater = Item("积水", Color(0, 0, 255))
 
-models = list(modelMap.values())
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__("accumulatedWater", [self.accumulatedWater], detectionComponent)
 
 
 OBJ_THRESH: float = 0.5
@@ -415,15 +418,39 @@ NMS_THRESH: float = 0.5
 
 
 class DetectionComponent(Component):
-
-    modelPath : ConfigField[str] = ConfigField()
-
+    modelPath: ConfigField[str] = ConfigField()
 
     OBJ_THRESH: ConfigField[float] = ConfigField()
     NMS_THRESH: ConfigField[float] = ConfigField()
 
+    carAccidentModel: CarAccidentModel = None
+    fallDownModel: FallDownModel = None
+    carModel: CarModel = None
+    faceModel: FaceModel = None
+    accumulatedWater: AccumulatedWater = None
+
+    modelMap: dict[str, Model] = {}
+    modelList: list[Model] = []
+
+    def __init__(self):
+        super().__init__()
+
+        self.carAccidentModel = CarAccidentModel(self)
+        self.fallDownModel = FallDownModel(self)
+        self.carModel = CarModel(self)
+        self.faceModel = FaceModel(self)
+        self.accumulatedWater = AccumulatedWater(self)
+
+        self.modelMap[self.carAccidentModel.name] = self.carAccidentModel
+        self.modelMap[self.fallDownModel.name] = self.fallDownModel
+        self.modelMap[self.carModel.name] = self.carModel
+        self.modelMap[self.faceModel.name] = self.faceModel
+        self.modelMap[self.accumulatedWater.name] = self.accumulatedWater
+
+        modelList = self.modelMap.values()
+
     async def init(self):
-        for name, model in modelMap.items():
+        for name, model in self.modelMap.items():
             model.load()
 
     async def initEnd(self):
@@ -433,7 +460,7 @@ class DetectionComponent(Component):
         NMS_THRESH = self.NMS_THRESH
 
     def runDetection(
-        self, inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]
+            self, inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]
     ) -> Result:
 
         h, w = inputImage.shape[:2]

@@ -1,12 +1,11 @@
 #!/usr/bin/python3
 
 import asyncio
-import logging
 import json
-import util
 from pathlib import Path
-from main import Component, ConfigField
 
+import util
+from main import Component
 
 CONFIG_FILE_PATH = "config.json"
 

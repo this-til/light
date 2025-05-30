@@ -1,25 +1,15 @@
 #!/usr/bin/python3
 
-import logging
 import asyncio
-import numpy as np
+import logging
+
 import cv2
+
 import detection
-import time
-import hkws
-import ctypes
-import sys
-import util
 import hkws_sdk
-from ctypes import *
-from typing import *
-from asyncio.subprocess import PIPE
-from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
-from enum import IntEnum, unique
-
-import main
+import util
 from main import Component, ConfigField
-
+from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +221,7 @@ class CameraComponent(Component):
                         None,
                         _runDetection,
                         sourceFrame,
-                        detection.models,
+                        self.main.detectionComponent.modelList,
                     )
 
                 _res = detection.Result(sourceFrame, res.cellMap)
