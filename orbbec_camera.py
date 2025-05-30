@@ -33,19 +33,13 @@ class OrbbecCameraComponent(Component):
 
     async def readImageLoop(self):
 
-        global config
-        global pipeline
-
-        config = None
-        pipeline = None
-
         while True:
             try:
 
-                config = Config()
-                pipeline = Pipeline()
+                self.config = Config()
+                self.pipeline = Pipeline()
 
-                profile_list = pipeline.get_stream_profile_list(
+                profile_list = self.pipeline.get_stream_profile_list(
                     OBSensorType.COLOR_SENSOR
                 )
 
@@ -63,13 +57,13 @@ class OrbbecCameraComponent(Component):
                     color_profile = profile_list.get_default_video_stream_profile()
                     self.logger.info(f"color profile: {str(color_profile)}")
 
-                config.enable_stream(color_profile)
-                pipeline.start(config)
+                self.config.enable_stream(color_profile)
+                self.pipeline.start(self.config)
 
                 while True:
 
                     frames: FrameSet = await asyncio.get_event_loop().run_in_executor(
-                        None, pipeline.wait_for_frames, int(1000 / self.fps)
+                        None, self.pipeline.wait_for_frames, int(1000 / self.fps)
                     )
 
                     if frames is None:
@@ -91,13 +85,13 @@ class OrbbecCameraComponent(Component):
                     pass
                 
             except asyncio.CancelledError:
-                if pipeline is not None:
-                    pipeline.stop()
+                if self.pipeline is not None:
+                    self.pipeline.stop()
                 raise
             except Exception as e:
                 self.logger.exception(f"发生未处理异常:  {str(e)}")
-                if pipeline is not None:
-                    pipeline.stop()
+                if self.pipeline is not None:
+                    self.pipeline.stop()
                 self.logger.info("5秒后尝试重新连接摄像头...")
                 await asyncio.sleep(5)
             pass
@@ -113,7 +107,7 @@ class OrbbecCameraComponent(Component):
                frame = await framesQueue.get()
                
                await asyncio.get_event_loop().run_in_executor(
-                   None, self.main.detectionComponent.runDetection, frame, [detection.faceModel]
+                   None, self.main.detectionComponent.runDetection, frame, [self.main.detectionComponent.faceModel]
                )
                
                await asyncio.sleep(3)  
