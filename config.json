@@ -23,6 +23,7 @@
         "pushRtspUrl": "rtsp://localhost:8554/stream2"
     },
     "DetectionComponent": {
+        "modelPath" : "/home/elf/light/model",
         "OBJ_THRESH": 0.5,
         "NMS_THRESH": 0.5
     },

@@ -8,7 +8,7 @@ from pathlib import Path
 from main import Component, ConfigField
 
 
-CONFIG_FILE_PATH = "/home/elf/light/config.json"
+CONFIG_FILE_PATH = "config.json"
 
 
 class ConfigureChangeEvent:

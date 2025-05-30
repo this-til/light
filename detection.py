@@ -57,11 +57,14 @@ class Model:
 
     rknn: RKNN = None  # type: ignore
 
+    detectionComponent : 'DetectionComponent' = None # type: ignore
+
     def __init__(
         self,
         name: str,
         itemList: list[Item],
         path: str,
+        detectionComponent : 'detectionComponent',
         size: tuple[int, int] = (640, 640),
     ):
         self.name = name
@@ -412,6 +415,9 @@ NMS_THRESH: float = 0.5
 
 
 class DetectionComponent(Component):
+
+    modelPath : ConfigField[str] = ConfigField()
+
 
     OBJ_THRESH: ConfigField[float] = ConfigField()
     NMS_THRESH: ConfigField[float] = ConfigField()
