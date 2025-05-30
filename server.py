@@ -49,7 +49,7 @@ async def setDeviceValue():
     key: str = str(request.args.get("key"))
     data = await request.get_json()
     value = data.get("value")
-    return createCarrier(device.setDeviceValue(key, value))
+    return createCarrier(serverComponent.main.detectionComponent.setDeviceValue(key, value))
 
 
 @app.route("/getConfigure")
