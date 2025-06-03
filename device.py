@@ -28,7 +28,7 @@ SetLightSwitch: CommandType = CommandType("SetLightSwitch", "uint")
 class Command:
 
     commandType: CommandType
-    dtat: object
+    data: object
     commandId: int
 
     resultsEvent: asyncio.Event = asyncio.Event()

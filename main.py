@@ -11,12 +11,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 T = TypeVar("T")  # 定义泛型类型
 
 
 class ConfigField(Generic[T]):
-
     default: T = None  # type: ignore
 
     def __init__(self, default: T | None = None):
@@ -38,7 +36,6 @@ class ComponentMeta(type):
 
 
 class Component(metaclass=ComponentMeta):
-
     logger: logging.Logger
     main: "Mian" = None  # type: ignore
     configFields: list[str] = []
@@ -79,8 +76,22 @@ class Component(metaclass=ComponentMeta):
 
 
 class Mian:
-
     components: list[Component] = []
+
+    def __init__(self):
+
+        self.configureComponent = None
+        self.uartComponent = None
+        self.orbbecCameraComponent = None
+        self.deviceComponent = None
+        self.mqttReportComponent = None
+        self.exclusiveServerReportComponent = None
+        self.detectionComponent = None
+        self.cameraComponent = None
+        self.hkwsSdkComponent = None
+        self.audioComponent = None
+        self.serverComponent = None
+        self.microphoneComponent = None
 
     async def main(self):
 
@@ -91,16 +102,19 @@ class Mian:
         from detection import DetectionComponent
         from audio import AudioComponent
         from device import DeviceComponent
-        from mqtt import MqttComponent
+        from report import MqttReportComponent
+        from report import ExclusiveServerReportComponent
         from hkws_sdk import HCNetSdkComponent
         from server import ServerComponent
         from microphone import MicrophoneComponent
+
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
         self.deviceComponent = DeviceComponent()
-        self.mqttComponent = MqttComponent()
+        self.mqttReportComponent = MqttReportComponent()
+        self.exclusiveServerReportComponent = ExclusiveServerReportComponent()
         self.detectionComponent = DetectionComponent()
         self.cameraComponent = CameraComponent()
         self.hkwsSdkComponent = HCNetSdkComponent()
@@ -112,7 +126,7 @@ class Mian:
         self.components.append(self.uartComponent)
         self.components.append(self.orbbecCameraComponent)
         self.components.append(self.deviceComponent)
-        self.components.append(self.mqttComponent)
+        self.components.append(self.mqttReportComponent)
         self.components.append(self.detectionComponent)
         self.components.append(self.hkwsSdkComponent)
         self.components.append(self.cameraComponent)

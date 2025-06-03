@@ -1,69 +1,78 @@
 {
-    "MqttComponent": {
-        "receiveTopic": "user18/project28/device32/device_c71184f09ec6",
-        "updataTopic": "user18/project28/device32/updata",
-        "clientId": "cat",
-        "ip": "1.94.32.220",
-        "port": 1883,
-        "userName": "cloud",
-        "password": "123456"
-    },
-    "UartComponent": {
-        "url": "/dev/ttyS9",
-        "baudrate": 2000000,
-        "bytesize": 8,
-        "parity": "N",
-        "stopbits": 1
-    },
-    "OrbbecCameraComponent": {
-        "url": "rtsp://localhost:8554/stream2",
-        "width": 640,
-        "height": 480,
-        "fps": 30,
-        "pushRtspUrl": "rtsp://localhost:8554/stream2"
-    },
-    "DetectionComponent": {
-        "modelPath" : "/home/elf/light/model",
-        "OBJ_THRESH": 0.5,
-        "NMS_THRESH": 0.5
-    },
-    "CameraComponent": {
-        "ip": "192.168.117.100",
-        "rtspPort": 554,
-        "sdkPort": 8000,
-        "username": "admin",
-        "password": "qWERTYUIOP",
-        "width": 2560,
-        "height": 1440,
-        "fps": 25,
-        "cameraRtspUrl": "rtsp://{username}:{password}@{ip}:{rtspPort}/Streaming/Channels/101",
-        "pushRtspUrl": "rtsp://localhost:8554/stream1"
-    },
-    "HCNetSdkComponent": {
-        "SDKPath": "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
-    },
-    "AudioComponent": {
-        "frequency": 16000,
-        "size": -16,
-        "channelNumber": 1,
-        "buffer": 4096
-    },
-    "ServerComponent": {
-        "host": "0.0.0.0",
-        "port": 8000,
-        "workers": 2,
-        "debug": true
-    },
-    "DeviceComponent": {
-        "commandOutTime": 60
-    },
-    "Device": {
-        "Gear": 1000,
-        "Switch": 0
-    },
-    "MicrophoneComponent": {
-        "framesPerBuffer" : 2048,
-        "rate": 44100,
-        "channels": 0
-    }
+  "MqttReportComponent": {
+    "receiveTopic": "user18/project28/device32/device_c71184f09ec6",
+    "updataTopic": "user18/project28/device32/updata",
+    "clientId": "cat",
+    "ip": "1.94.32.220",
+    "port": 1883,
+    "userName": "cloud",
+    "password": "123456"
+  },
+  "ExclusiveServerReportComponent": {
+    "username": "til",
+    "password": "114514",
+    "localName": "挂着咸鱼的路灯",
+    "url" : "ws://192.168.117.120:8080/graphql",
+    "headers": {},
+    "timeout" : 100,
+    "subprotocol" : "graphql-transport-ws"
+  },
+  "UartComponent": {
+    "url": "/dev/ttyS9",
+    "baudrate": 2000000,
+    "bytesize": 8,
+    "parity": "N",
+    "stopbits": 1
+  },
+  "OrbbecCameraComponent": {
+    "url": "rtsp://localhost:8554/stream2",
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "pushRtspUrl": "rtsp://localhost:8554/stream2"
+  },
+  "DetectionComponent": {
+    "modelPath": "/home/elf/light/model",
+    "OBJ_THRESH": 0.5,
+    "NMS_THRESH": 0.5
+  },
+  "CameraComponent": {
+    "ip": "192.168.117.100",
+    "rtspPort": 554,
+    "sdkPort": 8000,
+    "username": "admin",
+    "password": "qWERTYUIOP",
+    "width": 2560,
+    "height": 1440,
+    "fps": 25,
+    "cameraRtspUrl": "rtsp://{username}:{password}@{ip}:{rtspPort}/Streaming/Channels/101",
+    "pushRtspUrl": "rtsp://localhost:8554/stream1"
+  },
+  "HCNetSdkComponent": {
+    "SDKPath": "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
+  },
+  "AudioComponent": {
+    "frequency": 16000,
+    "size": -16,
+    "channelNumber": 1,
+    "buffer": 4096
+  },
+  "ServerComponent": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "workers": 2,
+    "debug": true
+  },
+  "DeviceComponent": {
+    "commandOutTime": 60
+  },
+  "Device": {
+    "Gear": 1000,
+    "Switch": 0
+  },
+  "MicrophoneComponent": {
+    "framesPerBuffer": 2048,
+    "rate": 44100,
+    "channels": 0
+  }
 }

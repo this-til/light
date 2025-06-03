@@ -13,10 +13,8 @@ from main import Component, ConfigField
 
 logger = logging.getLogger(__name__)
 
-
 app = Quart(__name__)
 app = cors(app, allow_origin="*")
-
 
 serverComponent: "ServerComponent" = None  # type: ignore
 

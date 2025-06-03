@@ -225,7 +225,7 @@ class CameraComponent(Component):
                     )
 
                 _res = detection.Result(sourceFrame, res.cellMap)
-                await self.out.publish(await _res.drawOutputImageAsunc())
+                await self.out.publish(await _res.drawOutputImageAsync())
 
             except asyncio.CancelledError:
                 raise

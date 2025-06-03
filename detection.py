@@ -277,7 +277,7 @@ class Result:
         self.outputImage = None
         self.cellMap = cellMap
 
-    async def drawOutputImageAsunc(self) -> cv2.typing.MatLike:
+    async def drawOutputImageAsync(self) -> cv2.typing.MatLike:
         if self.outputImage is None:
             return await asyncio.get_event_loop().run_in_executor(
                 None, self.drawOutputImage
@@ -447,7 +447,7 @@ class DetectionComponent(Component):
         self.modelMap[self.faceModel.name] = self.faceModel
         self.modelMap[self.accumulatedWater.name] = self.accumulatedWater
 
-        modelList = self.modelMap.values()
+        self.modelList = list(self.modelMap.values())
 
     async def init(self):
         for name, model in self.modelMap.items():
