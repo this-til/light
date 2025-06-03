@@ -10,6 +10,7 @@ from gql.transport.websockets import WebsocketsTransport
 from websockets import Subprotocol
 
 from main import Component, ConfigField
+from util import Box
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ class ExclusiveServerReportComponent(Component):
 
     async def init(self):
         asyncio.create_task(self.sensorReportLoop())
+        asyncio.create_task(self.detectionReportLoop())
+        asyncio.create_task(self.configurationDistributionLoop())
         pass
 
     def establishLink(self) -> WebsocketsTransport:
@@ -120,34 +123,16 @@ class ExclusiveServerReportComponent(Component):
 
     sensorReportGql = gql(
         """
-        query report(
-            $humidity : Float,
-            $temperature : Float,
-            $pm10 : Float,
-            $pm2_5 : Float,
-            $illumination : Float,
-            $windSpeed : Float,
-            $windDirection : Float
-        )
+        mutation sensorReport(lightDataInput : LightDataInput!)
         {
             lightSelf {
                 name
-                reportUpdata (
-                    lightDataInput: {
-                        humidity : $humidity
-                        temperature : $temperature
-                        pm10 : $pm10
-                        pm2_5 : $pm2_5
-                        illumination : $illumination
-                        windSpeed : $windSpeed
-                        windDirection : $windDirection
-                    }
-                ) {
+                reportUpdate (lightDataInput: lightDataInput) {
                     resultType
                 }
             }
         }
-    """
+        """
     )
 
     async def sensorReportLoop(self):
@@ -175,13 +160,15 @@ class ExclusiveServerReportComponent(Component):
                     await session.execute(
                         self.sensorReportGql,
                         {
-                            "humidity": weather["Humidity"],
-                            "temperature": weather["Temperature"],
-                            "pm10": weather["PM10"],
-                            "pm2_5": weather["PM2.5"],
-                            "illumination": weather["Illuminance"],
-                            "windSpeed": windSpeed["Wind_Speed"],
-                            "windDirection": windSpeed["Wind_Direction"]
+                            "lightDataInput": {
+                                "humidity": weather["Humidity"],
+                                "temperature": weather["Temperature"],
+                                "pm10": weather["PM10"],
+                                "pm2_5": weather["PM2.5"],
+                                "illumination": weather["Illuminance"],
+                                "windSpeed": windSpeed["Wind_Speed"],
+                                "windDirection": windSpeed["Wind_Direction"]
+                            }
                         }
                     )
 
@@ -192,6 +179,18 @@ class ExclusiveServerReportComponent(Component):
                 self.logger.exception(f"上传数据时发生异常: {str(e)}")
                 await asyncio.sleep(5)
 
+    detectionReportGql = gql(
+        """
+        mutation detectionReport($detectionInput: DetectionInput!) {
+          lightSelf {
+            reportDetection(detectionInput: $detectionInput) {
+              resultType
+            }
+          }
+        }
+        """
+    )
+
     async def detectionReportLoop(self):
 
         queue: asyncio.Queue[detection.Result] = await self.main.cameraComponent.identifyKeyframe.subscribe(
@@ -201,8 +200,46 @@ class ExclusiveServerReportComponent(Component):
         while True:
             try:
 
-                res = await queue.get()
+                ws = self.establishLink()
 
+                async with Client(
+                        transport=ws,
+                        fetch_schema_from_transport=False
+                ) as session:
+
+                    res = await queue.get()
+
+                    detections = []
+
+                    model: detection.Model
+                    cells: list[detection.Cell]
+                    cell: detection.Cell
+
+                    for model, cells in res.cellMap.items():
+                        modelName: str = model.name
+                        for cell in cells:
+                            box: Box = cell.box
+                            detections.append(
+                                {
+                                    "x": box.x,
+                                    "y": box.y,
+                                    "w": box.w,
+                                    "h": box.h,
+
+                                    "probability": cell.probability,
+
+                                    "model": modelName,
+                                    "item": cell.item.name,
+                                }
+                            )
+
+                    session.execute(
+                        self.detectionReportGql,
+                        {
+                            "items": detections,
+                            "image": None
+                        }
+                    )
 
 
             except asyncio.CancelledError:
@@ -210,8 +247,37 @@ class ExclusiveServerReportComponent(Component):
             except Exception as e:
                 self.logger.exception(f"上传关键帧时发生异常: {str(e)}")
 
+    configurationDistributionGql = gql(
+        """
+        subscription configurationDistribution{
+          updateConfiguration  {
+            key,
+            value
+          }
+        }
+        """
+    )
+
     async def configurationDistributionLoop(self):
 
+        while True:
+            try:
+                ws = self.establishLink()
 
+                async with Client(
+                        transport=ws,
+                        fetch_schema_from_transport=False
+                ) as session:
 
-        pass
+                    async for result in session.subscribe(self.configurationDistributionGql):
+                        message = result["updateConfiguration"]
+                        key = message["key"]
+                        value = message["value"]
+
+                        self.main.configureComponent.setConfigure(key, value)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"监听配置更改发生异常: {str(e)}")
+                await asyncio.sleep(5)
