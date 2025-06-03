@@ -123,11 +123,10 @@ class ExclusiveServerReportComponent(Component):
 
     sensorReportGql = gql(
         """
-        mutation sensorReport(lightDataInput : LightDataInput!)
-        {
+        mutation sensorReport($lightDataInput : LightDataInput!) {
             lightSelf {
                 name
-                reportUpdate (lightDataInput: lightDataInput) {
+                reportUpdate (lightDataInput: $lightDataInput) {
                     resultType
                 }
             }
@@ -249,7 +248,7 @@ class ExclusiveServerReportComponent(Component):
 
     configurationDistributionGql = gql(
         """
-        subscription configurationDistribution{
+        subscription configurationDistribution {
           updateConfiguration  {
             key,
             value
