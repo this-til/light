@@ -41,7 +41,7 @@ class MqttReportComponent(Component):
         self.client.connect(self.ip, self.port)
         self.client.loop_start()  # 使用非阻塞循环
 
-        asyncio.create_task(self.mqttReportLoop())
+        # asyncio.create_task(self.mqttReportLoop())
 
     async def mqttReportLoop(self):
 
@@ -98,7 +98,7 @@ class ExclusiveServerReportComponent(Component):
     url: ConfigField[str] = ConfigField()
     headers: ConfigField[dict] = ConfigField()
     timeout: ConfigField[int] = ConfigField()
-    subprotocols: ConfigField[str] = ConfigField()
+    subprotocol: ConfigField[str] = ConfigField()
 
     async def init(self):
         asyncio.create_task(self.sensorReportLoop())
@@ -114,18 +114,18 @@ class ExclusiveServerReportComponent(Component):
             init_payload={
                 "username": self.username,
                 "password": self.password,
-                "linkType": "WEBSOCKET_LIGHT",
+                "linkType": "WEBSOCKET",
+                "deviceType": "LIGHT",
                 "deviceName": self.localName,
             },
             keep_alive_timeout=self.timeout,
-            subprotocols=[cast(Subprotocol, self.subprotocols)],
+            subprotocols=[cast(Subprotocol, self.subprotocol)],
         )
 
     sensorReportGql = gql(
         """
         mutation sensorReport($lightDataInput : LightDataInput!) {
             lightSelf {
-                name
                 reportUpdate (lightDataInput: $lightDataInput) {
                     resultType
                 }
@@ -232,7 +232,7 @@ class ExclusiveServerReportComponent(Component):
                                 }
                             )
 
-                    session.execute(
+                    await session.execute(
                         self.detectionReportGql,
                         {
                             "items": detections,
@@ -245,6 +245,7 @@ class ExclusiveServerReportComponent(Component):
                 raise
             except Exception as e:
                 self.logger.exception(f"上传关键帧时发生异常: {str(e)}")
+                await asyncio.sleep(5)
 
     configurationDistributionGql = gql(
         """
@@ -273,7 +274,7 @@ class ExclusiveServerReportComponent(Component):
                         key = message["key"]
                         value = message["value"]
 
-                        self.main.configureComponent.setConfigure(key, value)
+                        await self.main.configureComponent.setConfigure(key, value)
 
             except asyncio.CancelledError:
                 raise

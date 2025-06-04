@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-
+import os
 import asyncio
 import json
 from pathlib import Path
@@ -38,7 +38,7 @@ class ConfigureComponent(Component):
 
         try:
             # 尝试加载现有配置文件
-            with open(CONFIG_FILE_PATH, "r") as file:
+            with open(f"{os.path.dirname(os.path.abspath(__file__))}/{CONFIG_FILE_PATH}", "r") as file:
                 self.configureMap = json.load(file)
                 self.logger.info(f"Loaded config from {CONFIG_FILE_PATH}")
 
