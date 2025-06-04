@@ -124,7 +124,7 @@ class ExclusiveServerReportComponent(Component):
 
     sensorReportGql = gql(
         """
-        mutation sensorReport($lightDataInput : LightDataInput!) {
+        mutation reportUpdate($lightDataInput : LightDataInput!) {
             lightSelf {
                 reportUpdate (lightDataInput: $lightDataInput) {
                     resultType
