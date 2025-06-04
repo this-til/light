@@ -61,7 +61,7 @@ class CameraComponent(Component):
         hkws_sdk.ptzControlOther(self.userId, 1, hkws_sdk.DeviceCommand.PAN_LEFT, 0)
 
         #asyncio.create_task(self.extractAudio())
-        asyncio.create_task(self.readFrames())
+        #asyncio.create_task(self.readFrames())
         asyncio.create_task(self.handleFrames())
         asyncio.create_task(self.pushFrames())
 

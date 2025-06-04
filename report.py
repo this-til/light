@@ -114,7 +114,7 @@ class ExclusiveServerReportComponent(Component):
             init_payload={
                 "username": self.username,
                 "password": self.password,
-                "linkType": "WEBSOCKET",
+                "linkType": "DEVICE_WEBSOCKET",
                 "deviceType": "LIGHT",
                 "deviceName": self.localName,
             },

@@ -763,7 +763,7 @@ def setDevConfig(
     userId: int,
     dwCommand: int,
     lChannel: int,
-    lpInBuffer: _ctypes._CArgObject,
+    lpInBuffer: '_ctypes._CArgObject',
     dwInBufferSize: int,
 ):
     if not callCpp(
