@@ -127,6 +127,7 @@ class Mian:
         self.components.append(self.orbbecCameraComponent)
         self.components.append(self.deviceComponent)
         self.components.append(self.mqttReportComponent)
+        self.components.append(self.exclusiveServerReportComponent)
         self.components.append(self.detectionComponent)
         self.components.append(self.hkwsSdkComponent)
         self.components.append(self.cameraComponent)
