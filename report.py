@@ -148,30 +148,32 @@ class ExclusiveServerReportComponent(Component):
                         fetch_schema_from_transport=False
                 ) as session:
 
-                    await event.wait()
-                    event.clear()
+                    while True:
+                        await event.wait()
+                        event.clear()
 
-                    data = self.main.deviceComponent.deviceValue
-                    modbus = data["Modbus"]
-                    weather = modbus["Weather"]
-                    windSpeed = modbus["Wind_Speed"]
+                        data = self.main.deviceComponent.deviceValue
+                        modbus = data["Modbus"]
+                        weather = modbus["Weather"]
+                        windSpeed = modbus["Wind_Speed"]
 
-                    await session.execute(
-                        self.sensorReportGql,
-                        {
-                            "lightDataInput": {
-                                "humidity": weather["Humidity"],
-                                "temperature": weather["Temperature"],
-                                "pm10": weather["PM10"],
-                                "pm2_5": weather["PM2.5"],
-                                "illumination": weather["Illuminance"],
-                                "windSpeed": windSpeed["Wind_Speed"],
-                                "windDirection": windSpeed["Wind_Direction"]
+                        await session.execute(
+                            self.sensorReportGql,
+                            {
+                                "lightDataInput": {
+                                    "humidity": weather["Humidity"],
+                                    "temperature": weather["Temperature"],
+                                    "pm10": weather["PM10"],
+                                    "pm2_5": weather["PM2.5"],
+                                    "illumination": weather["Illuminance"],
+                                    "windSpeed": windSpeed["Wind_Speed"],
+                                    "windDirection": windSpeed["Wind_Direction"]
+                                }
                             }
-                        }
-                    )
+                        )
 
-                    await asyncio.sleep(5)
+                        await asyncio.sleep(5)
+                        
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -206,39 +208,43 @@ class ExclusiveServerReportComponent(Component):
                         fetch_schema_from_transport=False
                 ) as session:
 
-                    res = await queue.get()
+                    while True:
 
-                    detections = []
+                        res = await queue.get()
 
-                    model: detection.Model
-                    cells: list[detection.Cell]
-                    cell: detection.Cell
+                        detections = []
 
-                    for model, cells in res.cellMap.items():
-                        modelName: str = model.name
-                        for cell in cells:
-                            box: Box = cell.box
-                            detections.append(
-                                {
-                                    "x": box.x,
-                                    "y": box.y,
-                                    "w": box.w,
-                                    "h": box.h,
+                        model: detection.Model
+                        cells: list[detection.Cell]
+                        cell: detection.Cell
 
-                                    "probability": cell.probability,
+                        for model, cells in res.cellMap.items():
+                            
+                            modelName: str = model.name
+                            
+                            for cell in cells:
+                                box: Box = cell.box
+                                detections.append(
+                                    {
+                                        "x": box.x,
+                                        "y": box.y,
+                                        "w": box.w,
+                                        "h": box.h,
+    
+                                        "probability": cell.probability,
+    
+                                        "model": modelName,
+                                        "item": cell.item.name,
+                                    }
+                                )
 
-                                    "model": modelName,
-                                    "item": cell.item.name,
-                                }
-                            )
-
-                    await session.execute(
-                        self.detectionReportGql,
-                        {
-                            "items": detections,
-                            "image": None
-                        }
-                    )
+                        await session.execute(
+                            self.detectionReportGql,
+                            {
+                                "items": detections,
+                                "image": None
+                            }
+                        )
 
 
             except asyncio.CancelledError:
@@ -249,9 +255,9 @@ class ExclusiveServerReportComponent(Component):
 
     configurationDistributionGql = gql(
         """
-        subscription configurationDistribution {
+        subscription updateConfiguration {
           updateConfiguration  {
-            key,
+            key
             value
           }
         }
