@@ -1,18 +1,31 @@
 import asyncio
 import logging
 import json
+from io import BytesIO
+
+import cv2
 import paho.mqtt.client as mqtt
+from gql.client import AsyncClientSession
+
 import detection
 import main
 from typing import cast
 from gql import gql, Client
 from gql.transport.websockets import WebsocketsTransport
+from gql.transport.aiohttp import AIOHTTPTransport
 from websockets import Subprotocol
 
 from main import Component, ConfigField
 from util import Box
 
+import aiohttp
+
 logger = logging.getLogger(__name__)
+
+
+class LightState:
+    enableWirelessCharging: bool
+    wirelessChargingPower: float
 
 
 class MqttReportComponent(Component):
@@ -95,22 +108,27 @@ class ExclusiveServerReportComponent(Component):
     password: ConfigField[str] = ConfigField()
     localName: ConfigField[str] = ConfigField()
 
-    url: ConfigField[str] = ConfigField()
-    headers: ConfigField[dict] = ConfigField()
+    webSocketUrl: ConfigField[str] = ConfigField()
+    httpUrl: ConfigField[str] = ConfigField()
     timeout: ConfigField[int] = ConfigField()
     subprotocol: ConfigField[str] = ConfigField()
 
+    dataUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
+    stateUpdateQueue: asyncio.Queue[LightState] = asyncio.Queue(maxsize=8)  # TODO subscribe stateUpdateQueue
+    identifyKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
+
     async def init(self):
-        asyncio.create_task(self.sensorReportLoop())
+        await self.main.deviceComponent.dataUpdate.subscribe(self.dataUpdateQueue)
+        await self.main.cameraComponent.identifyKeyframe.subscribe(self.identifyKeyframeQueue)
+
+        asyncio.create_task(self.webSocketTransportLoop())
         asyncio.create_task(self.detectionReportLoop())
-        asyncio.create_task(self.configurationDistributionLoop())
         pass
 
     def establishLink(self) -> WebsocketsTransport:
 
         return WebsocketsTransport(
-            url=self.url,
-            headers=self.headers,
+            url=self.webSocketUrl,
             init_payload={
                 "username": self.username,
                 "password": self.password,
@@ -121,6 +139,57 @@ class ExclusiveServerReportComponent(Component):
             keep_alive_timeout=self.timeout,
             subprotocols=[cast(Subprotocol, self.subprotocol)],
         )
+
+    # def publishTask(self, tasks: list[asyncio.Task], session: AsyncClientSession):
+
+    #    task = tasks[0]
+    #    if task is None or task.done():
+    #        tasks[0] = asyncio.create_task(self.sensorReportLoop(session))
+    #    task = tasks[1]
+    #    if task is None or task.done():
+    #        tasks[1] = asyncio.create_task(self.stateReportLoop(session))
+    #    task = tasks[2]
+    #    if task is None or task.done():
+    #        tasks[2] = asyncio.create_task(self.configurationDistributionLoop(session))
+
+    #    pass
+
+    async def webSocketTransportLoop(self):
+        ws = self.establishLink()
+        tasks: list[asyncio.Task] = [None, None, None]  # type: ignore
+
+        while True:
+
+            try:
+                async with Client(
+                        transport=ws,
+                        fetch_schema_from_transport=False
+                ) as session:
+
+                    await asyncio.wait(
+                        [
+                            asyncio.create_task(self.sensorReportLoop(session)),
+                            asyncio.create_task(self.stateReportLoop(session)),
+                            asyncio.create_task(self.configurationDistributionLoop(session)),
+                        ]
+                    )
+                    # while True:
+                    #    self.publishTask(tasks, session)
+                    #    try:
+                    #        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+                    #    except asyncio.CancelledError:
+                    #        raise
+                    #    except Exception as e:
+                    #        self.logger.exception(f"Websocket Loop 发生异常: {str(e)}")
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"Websocket Client 发生异常: {str(e)}")
+                for task in tasks:
+                    if task is not None:
+                        task.cancel()
+                await asyncio.sleep(5)
 
     sensorReportGql = gql(
         """
@@ -134,51 +203,98 @@ class ExclusiveServerReportComponent(Component):
         """
     )
 
-    async def sensorReportLoop(self):
-        event = await self.main.deviceComponent.dataUpdate.subscribe(asyncio.Event())
-
+    async def sensorReportLoop(self, session: AsyncClientSession):
         while True:
-
             try:
+                data = await self.dataUpdateQueue.get()
+                modbus = data["Modbus"]
+                weather = modbus["Weather"]
+                windSpeed = modbus["Wind_Speed"]
 
-                ws = self.establishLink()
-
-                async with Client(
-                        transport=ws,
-                        fetch_schema_from_transport=False
-                ) as session:
-
-                    while True:
-                        await event.wait()
-                        event.clear()
-
-                        data = self.main.deviceComponent.deviceValue
-                        modbus = data["Modbus"]
-                        weather = modbus["Weather"]
-                        windSpeed = modbus["Wind_Speed"]
-
-                        await session.execute(
-                            self.sensorReportGql,
-                            {
-                                "lightDataInput": {
-                                    "humidity": weather["Humidity"],
-                                    "temperature": weather["Temperature"],
-                                    "pm10": weather["PM10"],
-                                    "pm2_5": weather["PM2.5"],
-                                    "illumination": weather["Illuminance"],
-                                    "windSpeed": windSpeed["Wind_Speed"],
-                                    "windDirection": windSpeed["Wind_Direction"]
-                                }
-                            }
-                        )
-
-                        await asyncio.sleep(5)
-                        
+                await session.execute(
+                    self.sensorReportGql,
+                    {
+                        "lightDataInput": {
+                            "humidity": weather["Humidity"],
+                            "temperature": weather["Temperature"],
+                            "pm10": weather["PM10"],
+                            "pm2_5": weather["PM2.5"],
+                            "illumination": weather["Illuminance"],
+                            "windSpeed": windSpeed["Wind_Speed"],
+                            "windDirection": windSpeed["Wind_Direction"]
+                        }
+                    }
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self.logger.exception(f"上传数据时发生异常: {str(e)}")
+                self.logger.exception(f"sensorReportLoop exception: {str(e)}")
                 await asyncio.sleep(5)
+
+    stateReportGql = gql(
+        """
+        mutation ($lightState : LightStateInput){
+          lightSelf {
+            reportState(lightState : $lightState) {
+              resultType
+            }
+          }
+        }
+        """
+    )
+
+    async def stateReportLoop(self, session: AsyncClientSession):
+        while True:
+            try:
+                state = await self.stateUpdateQueue.get()
+
+                await session.execute(
+                    self.stateReportGql, {
+                        "$lightState": {
+                            "enableWirelessCharging": state.enableWirelessCharging,
+                            "wirelessChargingPower": state.wirelessChargingPower
+                        }
+                    }
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"stateReportLoop exception: {str(e)}")
+                await asyncio.sleep(5)
+
+    configurationDistributionGql = gql(
+        """
+        subscription updateConfiguration {
+          updateConfiguration  {
+            key
+            value
+          }
+        }
+        """
+    )
+
+    async def configurationDistributionLoop(self, session: AsyncClientSession):
+        while True:
+            try:
+                async for result in session.subscribe(self.configurationDistributionGql):
+                    message = result["updateConfiguration"]
+                    key = message["key"]
+                    value = message["value"]
+                    await self.main.configureComponent.setConfigure(key, value)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"configurationDistributionLoop exception: {str(e)}")
+                await asyncio.sleep(5)
+
+
+    loginGql = gql(
+        """
+        mutation login($username: String!, $password: String!) {
+            login(username: $username, password: $password)
+        }
+        """
+    )
 
     detectionReportGql = gql(
         """
@@ -194,96 +310,138 @@ class ExclusiveServerReportComponent(Component):
 
     async def detectionReportLoop(self):
 
-        queue: asyncio.Queue[detection.Result] = await self.main.cameraComponent.identifyKeyframe.subscribe(
-            asyncio.Queue(maxsize=1)
-        )
-
         while True:
             try:
 
-                ws = self.establishLink()
+                async with aiohttp.ClientSession() as session:
 
-                async with Client(
-                        transport=ws,
-                        fetch_schema_from_transport=False
-                ) as session:
+                    data = aiohttp.FormData()
 
-                    while True:
-
-                        res = await queue.get()
-
-                        detections = []
-
-                        model: detection.Model
-                        cells: list[detection.Cell]
-                        cell: detection.Cell
-
-                        for model, cells in res.cellMap.items():
-                            
-                            modelName: str = model.name
-                            
-                            for cell in cells:
-                                box: Box = cell.box
-                                detections.append(
-                                    {
-                                        "x": box.x,
-                                        "y": box.y,
-                                        "w": box.w,
-                                        "h": box.h,
-    
-                                        "probability": cell.probability,
-    
-                                        "model": modelName,
-                                        "item": cell.item.name,
-                                    }
-                                )
-
-                        await session.execute(
-                            self.detectionReportGql,
+                    data.add_field(
+                        "operations",
+                        json.dumps(
                             {
-                                "items": detections,
-                                "image": None
+                                "query": self.loginGql,
+                                "variables": {
+                                    "username": self.username,
+                                    "password": self.password,
+                                }
                             }
+                        ),
+                        content_type="application/json"
+                    )
+
+                    async with session.post(
+                            self.httpUrl,
+                            data=data,
+                    ) as response:
+
+                        if response.status != 200:
+                            raise Exception(f"http error: {str(response.status)}")
+
+                        result = response.json()
+                        if result.errors is not None:
+                            raise Exception(f"result errors: \n{result}")
+
+                        jwt = result.data.login
+                        if jwt is None:
+                            raise Exception(f"not obtained jwt")
+
+                    res : detection.Result= await self.identifyKeyframeQueue.get()
+
+                    detections = []
+
+                    model: detection.Model
+                    cells: list[detection.Cell]
+                    cell: detection.Cell
+
+                    for model, cells in res.cellMap.items():
+
+                        modelName: str = model.name
+
+                        for cell in cells:
+                            box: Box = cell.box
+                            detections.append(
+                                {
+                                    "x": box.x,
+                                    "y": box.y,
+                                    "w": box.w,
+                                    "h": box.h,
+
+                                    "probability": cell.probability,
+
+                                    "model": modelName,
+                                    "item": cell.item.name,
+                                }
+                            )
+
+                    data = aiohttp.FormData()
+
+                    data.add_field(
+                        "operations",
+                        json.dumps(
+                            {
+                                "query": self.detectionReportGql,
+                                "variables": {
+                                    "detectionInput": {
+                                        "items" : detections,
+                                        "image" : None
+                                    }
+                                }
+                            }
+                        ),
+                        content_type="application/json"
+                    )
+
+                    data.add_field(
+                        "map",
+                        json.dumps(
+                            {
+                                "image": ["variables.detectionInput.image"]
+                            }
+                        ),
+                        content_type="application/json"
+                    )
+
+                    image : cv2.typing.MatLike  = res.inputImage
+
+                    if len(image.shape) == 3:  # 彩色图像
+                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                        image = await asyncio.get_event_loop().run_in_executor(
+                            None, cv2.cvtColor, image, cv2.COLOR_BGR2RGB, None, 3
                         )
 
+                    #_, jpeg_buffer = cv2.imencode(".jpg", img_rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    _, jpeg_buffer = await asyncio.get_event_loop().run_in_executor(
+                        None, cv2.imencode, ".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+                    )
+                    jpeg_bytes = jpeg_buffer.tobytes()
+                    image_file = BytesIO(jpeg_bytes)
+
+                    data.add_field(
+                        "image",
+                        image_file,
+                        filename="image.jpg",
+                        content_type="image/jpeg"
+                    )
+
+                    async with session.post(
+                            self.httpUrl,
+                            data=data,
+                            headers={
+                                "Authorization": f"{jwt}"
+                            }
+                    ) as response:
+
+                        if response.status != 200:
+                            raise Exception(f"http error: {str(response.status)}")
+
+                        result = response.json()
+                        if result.errors is not None:
+                            raise Exception(f"result errors: \n{result}")
 
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"上传关键帧时发生异常: {str(e)}")
-                await asyncio.sleep(5)
-
-    configurationDistributionGql = gql(
-        """
-        subscription updateConfiguration {
-          updateConfiguration  {
-            key
-            value
-          }
-        }
-        """
-    )
-
-    async def configurationDistributionLoop(self):
-
-        while True:
-            try:
-                ws = self.establishLink()
-
-                async with Client(
-                        transport=ws,
-                        fetch_schema_from_transport=False
-                ) as session:
-
-                    async for result in session.subscribe(self.configurationDistributionGql):
-                        message = result["updateConfiguration"]
-                        key = message["key"]
-                        value = message["value"]
-
-                        await self.main.configureComponent.setConfigure(key, value)
-
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                self.logger.exception(f"监听配置更改发生异常: {str(e)}")
                 await asyncio.sleep(5)

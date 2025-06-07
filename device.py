@@ -12,7 +12,6 @@ from main import Component, ConfigField
 
 
 class CommandType:
-
     target: str
     dataType: str
 
@@ -26,7 +25,6 @@ SetLightSwitch: CommandType = CommandType("SetLightSwitch", "uint")
 
 
 class Command:
-
     commandType: CommandType
     data: object
     commandId: int
@@ -56,7 +54,6 @@ class Command:
 
 
 class DeviceComponent(Component):
-
     commandOutTime: ConfigField[float] = ConfigField()
 
     deviceValue = {}
@@ -64,7 +61,7 @@ class DeviceComponent(Component):
     commandId: int = 1
     commandIdMap: dict[int, Command] = {}
 
-    dataUpdate: util.EventBroadcaster = util.EventBroadcaster()
+    dataUpdate: util.Broadcaster[dict] = util.Broadcaster()
 
     async def init(self):
         await super().init()
@@ -101,8 +98,8 @@ class DeviceComponent(Component):
                     self.commandIdMap.pop(speakId)
 
                 if "Data" in decoded:
-                    util.jsonDeepMerge(self.deviceValue, decoded["Data"])
-                    await self.dataUpdate.setEvent()
+                    self.deviceValue = decoded["Data"]
+                    await self.dataUpdate.publish(self.deviceValue)
 
             except asyncio.CancelledError:
                 raise
@@ -177,7 +174,7 @@ class DeviceComponent(Component):
 
     def setDeviceValue(self, key: str, value):
         util.setFromJson(key, value, self.deviceValue)
-        self.dataUpdate.setEvent_nowait()
+        self.dataUpdate.publish_nowait(self.deviceValue)
 
     def sendCommand(self, command: Command) -> Command:
         self.commandId += 1

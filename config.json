@@ -12,8 +12,8 @@
     "username": "til",
     "password": "114514",
     "localName": "挂着咸鱼的路灯",
-    "url" : "ws://192.168.117.120:8080/graphql",
-    "headers": {},
+    "webSocketUrl" : "ws://192.168.117.120:8080/graphql",
+    "httpUrl": "http://192.168.117.120:8080/graphql",
     "timeout" : 100,
     "subprotocol" : "graphql-transport-ws"
   },
