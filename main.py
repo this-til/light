@@ -80,18 +80,20 @@ class Mian:
 
     def __init__(self):
 
-        self.configureComponent = None
-        self.uartComponent = None
-        self.orbbecCameraComponent = None
-        self.deviceComponent = None
-        self.mqttReportComponent = None
-        self.exclusiveServerReportComponent = None
-        self.detectionComponent = None
-        self.cameraComponent = None
-        self.hkwsSdkComponent = None
-        self.audioComponent = None
-        self.serverComponent = None
-        self.microphoneComponent = None
+        # self.configureComponent = None
+        # self.uartComponent = None
+        # self.orbbecCameraComponent = None
+        # self.deviceComponent = None
+        # self.mqttReportComponent = None
+        # self.exclusiveServerReportComponent = None
+        # self.detectionComponent = None
+        # self.cameraComponent = None
+        # self.hkwsSdkComponent = None
+        # self.audioComponent = None
+        # self.serverComponent = None
+        # self.microphoneComponent = None
+
+        pass
 
     async def main(self):
 

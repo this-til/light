@@ -81,16 +81,19 @@ class UartComponent(Component):
                 data = await asyncio.get_event_loop().run_in_executor(
                     None, self.uart.read, 4096
                 )
-                
+
                 if len(data) == 0:
                     continue
-                
+
                 await self.usarReader.publish(data)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"Error reading from serial: {str(e)}")
                 await asyncio.sleep(5)
-                
-    def write(self, data: bytes):
-        self.uart.write(data)
+
+    async def writeAsync(self, data: bytes):
+        #self.uart.write(data)
+        return asyncio.get_event_loop().run_in_executor(
+            None, self.uart.write, data
+        )

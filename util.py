@@ -530,6 +530,41 @@ def setFromJson(key: str, value: object, ojson: dict) -> None:
             ojson.update(value)
 
 
+def splitJsonObjects(json_str):
+    """
+    将连续的JSON对象字符串分割成独立的JSON对象列表
+    示例输入: '{"a":1}{"b":2}' -> ['{"a":1}', '{"b":2}']
+    """
+    objects = []
+    start_index = 0
+    brace_count = 0
+    in_string = False
+    escape_next = False
+
+    for i, char in enumerate(json_str):
+        if in_string:
+            if escape_next:
+                escape_next = False
+            elif char == '\\':
+                escape_next = True
+            elif char == '"':
+                in_string = False
+        else:
+            if char == '"':
+                in_string = True
+                escape_next = False
+            elif char == '{':
+                if brace_count == 0:
+                    start_index = i  # 标记对象起始位置
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    # 当括号归零时截取完整对象
+                    objects.append(json_str[start_index:i + 1])
+
+    return objects
+
 def changeSize(
     inputImage: cv2.typing.MatLike, size: tuple[int, int]
 ) -> cv2.typing.MatLike:

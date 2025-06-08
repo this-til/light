@@ -81,25 +81,32 @@ class DeviceComponent(Component):
             try:
                 data: bytes = await uartDataQueue.get()
                 strData = data.decode("utf-8").strip()
-                self.logger.debug(f"read dtat: {strData}")
-                decoded = json.loads(strData)
+                self.logger.debug(f"read data: {strData}")
 
-                if "Command" in decoded:
-                    load = decoded["Command"]
-                    speakId: int = int(load["SpeakId"])
+                frames = asyncio.get_event_loop().run_in_executor(
+                    None, util.splitJsonObjects, strData
+                )
 
-                    if speakId not in self.commandIdMap:
-                        continue
+                for frame in frames:
 
-                    command: Command = self.commandIdMap[speakId]
-                    command.results = load["Execute_Status"]
-                    command.resultsEvent.set()
+                    decoded = json.loads(frame)
 
-                    self.commandIdMap.pop(speakId)
+                    if "Command" in decoded:
+                        load = decoded["Command"]
+                        speakId: int = int(load["SpeakId"])
 
-                if "Data" in decoded:
-                    self.deviceValue = decoded["Data"]
-                    await self.dataUpdate.publish(self.deviceValue)
+                        if speakId not in self.commandIdMap:
+                            continue
+
+                        command: Command = self.commandIdMap[speakId]
+                        command.results = load["Execute_Status"]
+                        command.resultsEvent.set()
+
+                        self.commandIdMap.pop(speakId)
+
+                    if "Data" in decoded:
+                        self.deviceValue = decoded["Data"]
+                        await self.dataUpdate.publish(self.deviceValue)
 
             except asyncio.CancelledError:
                 raise
@@ -149,8 +156,7 @@ class DeviceComponent(Component):
                     jsonData = command.toJson()
                     strData = json.dumps(jsonData)
                     self.logger.debug(f"发送命令: {strData}")
-                    self.main.uartComponent.write(strData.encode("utf-8"))
-
+                    await self.main.uartComponent.write(strData.encode("utf-8"))
                     await asyncio.sleep(1)
 
             except asyncio.CancelledError:

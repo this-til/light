@@ -1,5 +1,6 @@
 {
   "MqttReportComponent": {
+    "enable": false,
     "receiveTopic": "user18/project28/device32/device_c71184f09ec6",
     "updataTopic": "user18/project28/device32/updata",
     "clientId": "cat",
@@ -9,6 +10,7 @@
     "password": "123456"
   },
   "ExclusiveServerReportComponent": {
+    "enable": true,
     "username": "til",
     "password": "114514",
     "localName": "挂着咸鱼的路灯",
@@ -25,6 +27,7 @@
     "stopbits": 1
   },
   "OrbbecCameraComponent": {
+    "enable": true,
     "url": "rtsp://localhost:8554/stream2",
     "width": 640,
     "height": 480,

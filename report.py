@@ -29,6 +29,8 @@ class LightState:
 
 
 class MqttReportComponent(Component):
+    enable: ConfigField[bool] = ConfigField()
+
     receiveTopic: ConfigField[str] = ConfigField()
     updataTopic: ConfigField[str] = ConfigField()
     clientId: ConfigField[str] = ConfigField()
@@ -42,17 +44,18 @@ class MqttReportComponent(Component):
     async def init(self):
         await super().init()
 
-        self.client = mqtt.Client(client_id=self.clientId)
+        if self.enable:
+            self.client = mqtt.Client(client_id=self.clientId)
 
-        self.client.subscribe(self.receiveTopic)
-        self.client.subscribe(self.updataTopic)
+            self.client.subscribe(self.receiveTopic)
+            self.client.subscribe(self.updataTopic)
 
-        self.client.on_connect = self.onConnect
-        self.client.on_message = self.onMessage
+            self.client.on_connect = self.onConnect
+            self.client.on_message = self.onMessage
 
-        self.client.username_pw_set(self.userName, self.password)
-        self.client.connect(self.ip, self.port)
-        self.client.loop_start()  # 使用非阻塞循环
+            self.client.username_pw_set(self.userName, self.password)
+            self.client.connect(self.ip, self.port)
+            self.client.loop_start()  # 使用非阻塞循环
 
         # asyncio.create_task(self.mqttReportLoop())
 
@@ -104,6 +107,8 @@ class MqttReportComponent(Component):
 
 
 class ExclusiveServerReportComponent(Component):
+    enable: ConfigField[bool] = ConfigField()
+
     username: ConfigField[str] = ConfigField()
     password: ConfigField[str] = ConfigField()
     localName: ConfigField[str] = ConfigField()
@@ -121,8 +126,9 @@ class ExclusiveServerReportComponent(Component):
         await self.main.deviceComponent.dataUpdate.subscribe(self.dataUpdateQueue)
         await self.main.cameraComponent.identifyKeyframe.subscribe(self.identifyKeyframeQueue)
 
-        asyncio.create_task(self.webSocketTransportLoop())
-        asyncio.create_task(self.detectionReportLoop())
+        if self.enable:
+            asyncio.create_task(self.webSocketTransportLoop())
+            asyncio.create_task(self.detectionReportLoop())
         pass
 
     def establishLink(self) -> WebsocketsTransport:
@@ -287,15 +293,13 @@ class ExclusiveServerReportComponent(Component):
                 self.logger.exception(f"configurationDistributionLoop exception: {str(e)}")
                 await asyncio.sleep(5)
 
-
     loginGql = """
         mutation login($username: String!, $password: String!) {
             login(username: $username, password: $password)
         }
         """
-    
 
-    detectionReportGql =  """
+    detectionReportGql = """
         mutation detectionReport($detectionInput: DetectionInput!) {
           lightSelf {
             reportDetection(detectionInput: $detectionInput) {
@@ -304,7 +308,6 @@ class ExclusiveServerReportComponent(Component):
           }
         }
         """
-    
 
     async def detectionReportLoop(self):
 
@@ -340,15 +343,15 @@ class ExclusiveServerReportComponent(Component):
                         result = await response.json()
                         if "errors" in result and result["errors"] is not None:
                             raise Exception(f"result errors: \n{result}")
-                        
+
                         if "data" not in result or "login" not in result["data"]:
                             raise Exception(f"result data not found: \n{result}")
-                        
+
                         jwt = result["data"]["login"]
                         if jwt is None:
                             raise Exception(f"not obtained jwt")
 
-                    res : detection.Result= await self.identifyKeyframeQueue.get()
+                    res: detection.Result = await self.identifyKeyframeQueue.get()
 
                     detections = []
 
@@ -385,8 +388,8 @@ class ExclusiveServerReportComponent(Component):
                                 "query": self.detectionReportGql,
                                 "variables": {
                                     "detectionInput": {
-                                        "items" : detections,
-                                        "image" : None
+                                        "items": detections,
+                                        "image": None
                                     }
                                 }
                             }
@@ -404,7 +407,7 @@ class ExclusiveServerReportComponent(Component):
                         content_type="application/json"
                     )
 
-                    image : cv2.typing.MatLike  = res.inputImage
+                    image: cv2.typing.MatLike = res.inputImage
 
                     if len(image.shape) == 3:  # 彩色图像
                         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -412,7 +415,7 @@ class ExclusiveServerReportComponent(Component):
                             None, cv2.cvtColor, image, cv2.COLOR_BGR2RGB, None, 3
                         )
 
-                    #_, jpeg_buffer = cv2.imencode(".jpg", img_rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    # _, jpeg_buffer = cv2.imencode(".jpg", img_rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                     _, jpeg_buffer = await asyncio.get_event_loop().run_in_executor(
                         None, cv2.imencode, ".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
                     )
