@@ -288,16 +288,14 @@ class ExclusiveServerReportComponent(Component):
                 await asyncio.sleep(5)
 
 
-    loginGql = gql(
-        """
+    loginGql = """
         mutation login($username: String!, $password: String!) {
             login(username: $username, password: $password)
         }
         """
-    )
+    
 
-    detectionReportGql = gql(
-        """
+    detectionReportGql =  """
         mutation detectionReport($detectionInput: DetectionInput!) {
           lightSelf {
             reportDetection(detectionInput: $detectionInput) {
@@ -306,7 +304,7 @@ class ExclusiveServerReportComponent(Component):
           }
         }
         """
-    )
+    
 
     async def detectionReportLoop(self):
 
@@ -339,11 +337,14 @@ class ExclusiveServerReportComponent(Component):
                         if response.status != 200:
                             raise Exception(f"http error: {str(response.status)}")
 
-                        result = response.json()
-                        if result.errors is not None:
+                        result = await response.json()
+                        if "errors" in result and result["errors"] is not None:
                             raise Exception(f"result errors: \n{result}")
-
-                        jwt = result.data.login
+                        
+                        if "data" not in result or "login" not in result["data"]:
+                            raise Exception(f"result data not found: \n{result}")
+                        
+                        jwt = result["data"]["login"]
                         if jwt is None:
                             raise Exception(f"not obtained jwt")
 
