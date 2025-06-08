@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 
 import cv2
 
@@ -61,7 +62,7 @@ class CameraComponent(Component):
         hkws_sdk.ptzControlOther(self.userId, 1, hkws_sdk.DeviceCommand.PAN_LEFT, 0)
 
         #asyncio.create_task(self.extractAudio())
-        #asyncio.create_task(self.readFrames())
+        asyncio.create_task(self.readFrames())
         asyncio.create_task(self.handleFrames())
         asyncio.create_task(self.pushFrames())
 
@@ -208,13 +209,13 @@ class CameraComponent(Component):
                     def _runDetection(
                         inputImage: cv2.typing.MatLike, useModel: list[detection.Model]
                     ):
-                        # start_time = time.perf_counter()
+                        start_time = time.perf_counter()
                         res = self.main.detectionComponent.runDetection(
                             inputImage, useModel
                         )
-                        # end_time = time.perf_counter()
-                        # duration_ms = (end_time - start_time) * 1000
-                        # logger.info(f"inference 耗时: {duration_ms:.3f}ms")
+                        end_time = time.perf_counter()
+                        duration_ms = (end_time - start_time) * 1000
+                        logger.info(f"inference 耗时: {duration_ms:.3f}ms")
                         return res
 
                     task = asyncio.get_event_loop().run_in_executor(
