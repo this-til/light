@@ -23,6 +23,9 @@ BUFFER_SIZE = 4096  # 每次读取的数据块大小，须为2的倍数
 
 
 class CameraComponent(Component):
+    enable: ConfigField[bool] = ConfigField()
+    enablePushFrames : ConfigField[bool] = ConfigField()
+    enableDetection : ConfigField[bool] = ConfigField()
 
     ip: ConfigField[str] = ConfigField()
     rtspPort: ConfigField[int] = ConfigField()
@@ -56,15 +59,17 @@ class CameraComponent(Component):
         )
 
         self.realHandle = hkws_sdk.realPlay(self.userId)
-        # hkws_sdk.setRealDataCallBack(userId, realHandle)
-        # voiceHandle = hkws_sdk.startVoiceComMr(userId)
-
         hkws_sdk.ptzControlOther(self.userId, 1, hkws_sdk.DeviceCommand.PAN_LEFT, 0)
 
-        #asyncio.create_task(self.extractAudio())
-        asyncio.create_task(self.readFrames())
-        asyncio.create_task(self.handleFrames())
-        asyncio.create_task(self.pushFrames())
+        if self.enable:
+            asyncio.create_task(self.extractAudio())
+            asyncio.create_task(self.readFrames())
+
+            if self.enableDetection:
+                asyncio.create_task(self.handleFrames())
+
+            if self.enablePushFrames:
+                asyncio.create_task(self.pushFrames())
 
     async def initBack(self):
         await super().initBack()
