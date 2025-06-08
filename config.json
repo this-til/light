@@ -27,7 +27,7 @@
     "stopbits": 1
   },
   "OrbbecCameraComponent": {
-    "enable": true,
+    "enable": false,
     "url": "rtsp://localhost:8554/stream2",
     "width": 640,
     "height": 480,
@@ -40,6 +40,9 @@
     "NMS_THRESH": 0.5
   },
   "CameraComponent": {
+    "enable": false,
+    "enablePushFrames": false,
+    "enableDetection": false,
     "ip": "192.168.117.100",
     "rtspPort": 554,
     "sdkPort": 8000,
