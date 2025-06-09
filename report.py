@@ -246,7 +246,7 @@ class ExclusiveServerReportComponent(Component):
 
     stateReportGql = gql(
         """
-        mutation ($lightState : LightStateInput){
+        mutation reportState($lightState : LightStateInput){
           lightSelf {
             reportState(lightState : $lightState) {
               resultType
@@ -315,7 +315,7 @@ class ExclusiveServerReportComponent(Component):
         mutation ($lightState : LightStateInput, $lightName : String!){
           self {
             getLightByName(name : $lightName) {
-              reportState(lightState : $lightState) {
+              reportDetection(lightState : $lightState) {
               	resultType
               }
             }
