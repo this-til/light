@@ -34,6 +34,21 @@ class Box:
         self.h = h
         pass
 
+    def normalization(self, width: float, height: float) -> 'Box':
+        """
+        将坐标归一化到[0, 1]范围内
+        """
+
+        if width <= 0 or height <= 0:
+            raise ValueError("Width and height must be greater than zero.")
+        
+        return Box(
+            x=self.x / width,
+            y=self.y / height,
+            w=self.w / width,
+            h=self.h / height,
+        )
+        
     pass
 
 

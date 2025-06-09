@@ -13,6 +13,7 @@ from main import Component, ConfigField
 
 class OrbbecCameraComponent(Component):
     enable: ConfigField[bool] = ConfigField()
+    enablePushFrames: ConfigField[bool] = ConfigField()
 
     url: ConfigField[str] = ConfigField()
     width: ConfigField[int] = ConfigField()
@@ -31,7 +32,9 @@ class OrbbecCameraComponent(Component):
         if self.enable:
             asyncio.create_task(self.readImageLoop())
             asyncio.create_task(self.handleFrames())
-            asyncio.create_task(self.pushFrames())
+            
+            if self.enablePushFrames:
+                asyncio.create_task(self.pushFrames())
 
     async def readImageLoop(self):
 

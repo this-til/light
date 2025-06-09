@@ -81,9 +81,9 @@ class DeviceComponent(Component):
             try:
                 data: bytes = await uartDataQueue.get()
                 strData = data.decode("utf-8").strip()
-                self.logger.debug(f"read data: {strData}")
+                #self.logger.debug(f"read data: {strData}")
 
-                frames = asyncio.get_event_loop().run_in_executor(
+                frames = await asyncio.get_event_loop().run_in_executor(
                     None, util.splitJsonObjects, strData
                 )
 
@@ -140,8 +140,11 @@ class DeviceComponent(Component):
 
             await asyncio.sleep(1)
 
+            if len(self.commandIdMap) == 0:
+                continue
+            
             try:
-                for commandId, command in self.commandIdMap.items():
+                for commandId, command in list(self.commandIdMap.items()):
                     if command.firstTime == 0:
                         command.firstTime = asyncio.get_event_loop().time()
 
@@ -150,13 +153,13 @@ class DeviceComponent(Component):
                     if command.lastTime - command.firstTime > self.commandOutTime:
                         command.resultsEvent.set()
                         logging.error(f"命令超时: {command.commandId}")
-                        del self.commandIdMap[commandId]
+                        self.commandIdMap.pop(commandId)
                         continue
 
                     jsonData = command.toJson()
                     strData = json.dumps(jsonData)
                     self.logger.debug(f"发送命令: {strData}")
-                    await self.main.uartComponent.write(strData.encode("utf-8"))
+                    await self.main.uartComponent.writeAsync(strData.encode("utf-8"))
                     await asyncio.sleep(1)
 
             except asyncio.CancelledError:

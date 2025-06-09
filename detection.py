@@ -11,7 +11,7 @@ import time
 from util import Box, Color
 
 from rknn.api import RKNN
-
+from typing import Sequence
 from main import Component, ConfigField
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -263,6 +263,8 @@ class Model:
         y = (y * acc_metrix).sum(2)
         return y.numpy()
 
+    def __str__(self):
+        return self.name
 
 class Result:
     inputImage: cv2.typing.MatLike
@@ -373,7 +375,7 @@ class FallDownModel(Model):
     standPerson = Item("stand person", Color(100, 255, 100))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("accident", [self.fallDown, self.standPerson], detectionComponent)
+        super().__init__("fallDown", [self.fallDown, self.standPerson], detectionComponent)
 
 
 class CarModel(Model):
@@ -423,11 +425,11 @@ class DetectionComponent(Component):
     OBJ_THRESH: ConfigField[float] = ConfigField()
     NMS_THRESH: ConfigField[float] = ConfigField()
 
-    carAccidentModel: CarAccidentModel = None
-    fallDownModel: FallDownModel = None
-    carModel: CarModel = None
-    faceModel: FaceModel = None
-    accumulatedWater: AccumulatedWater = None
+    carAccidentModel: CarAccidentModel = None # type: ignore
+    fallDownModel: FallDownModel = None # type: ignore
+    carModel: CarModel = None # type: ignore
+    faceModel: FaceModel = None # type: ignore
+    accumulatedWater: AccumulatedWater = None # type: ignore
 
     modelMap: dict[str, Model] = {}
     modelList: list[Model] = []
@@ -460,8 +462,10 @@ class DetectionComponent(Component):
         NMS_THRESH = self.NMS_THRESH
 
     def runDetection(
-            self, inputImage: cv2.typing.MatLike, useModel: set[Model] | list[Model]
+            self, inputImage: cv2.typing.MatLike, useModel: Sequence[Model]
     ) -> Result:
+
+        start_time = time.perf_counter()
 
         h, w = inputImage.shape[:2]
         originalSize: tuple[int, int] = (h, w)
@@ -484,5 +488,11 @@ class DetectionComponent(Component):
             for m in modelList:
                 cellRes: list[Cell] = m.directRun(_inputImage, originalSize)
                 cellMap[m] = cellRes
-
-        return Result(inputImage, cellMap)
+        
+        res = Result(inputImage, cellMap)
+        
+        end_time = time.perf_counter()
+        duration_ms = (end_time - start_time) * 1000
+        logger.info(f"Detection {useModel} 耗时: {duration_ms:.3f}ms")    
+        
+        return res

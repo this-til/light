@@ -83,7 +83,6 @@ class MqttReportComponent(Component):
                             "PM10": weather["PM10"],
                             "PM2.5": weather["PM2.5"],
                             "光照": weather["Illuminance"],
-
                             "风速": windSpeed["Wind_Speed"],
                             "风向": windSpeed["Wind_Direction"],
                         }
@@ -116,17 +115,22 @@ class ExclusiveServerReportComponent(Component):
     webSocketUrl: ConfigField[str] = ConfigField()
     httpUrl: ConfigField[str] = ConfigField()
     timeout: ConfigField[int] = ConfigField()
+    pingInterval: ConfigField[int] = ConfigField()
     subprotocol: ConfigField[str] = ConfigField()
 
     dataUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
-    stateUpdateQueue: asyncio.Queue[LightState] = asyncio.Queue(maxsize=8)  # TODO subscribe stateUpdateQueue
+    stateUpdateQueue: asyncio.Queue[LightState] = asyncio.Queue(
+        maxsize=8
+    )  # TODO subscribe stateUpdateQueue
     identifyKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
 
     async def init(self):
-        await self.main.deviceComponent.dataUpdate.subscribe(self.dataUpdateQueue)
-        await self.main.cameraComponent.identifyKeyframe.subscribe(self.identifyKeyframeQueue)
-
         if self.enable:
+            await self.main.deviceComponent.dataUpdate.subscribe(self.dataUpdateQueue)
+            await self.main.cameraComponent.identifyKeyframe.subscribe(
+                self.identifyKeyframeQueue
+            )
+
             asyncio.create_task(self.webSocketTransportLoop())
             asyncio.create_task(self.detectionReportLoop())
         pass
@@ -143,6 +147,7 @@ class ExclusiveServerReportComponent(Component):
                 "deviceName": self.localName,
             },
             keep_alive_timeout=self.timeout,
+            ping_interval=self.pingInterval,
             subprotocols=[cast(Subprotocol, self.subprotocol)],
         )
 
@@ -168,15 +173,16 @@ class ExclusiveServerReportComponent(Component):
 
             try:
                 async with Client(
-                        transport=ws,
-                        fetch_schema_from_transport=False
+                    transport=ws, fetch_schema_from_transport=False
                 ) as session:
 
                     await asyncio.wait(
                         [
                             asyncio.create_task(self.sensorReportLoop(session)),
                             asyncio.create_task(self.stateReportLoop(session)),
-                            asyncio.create_task(self.configurationDistributionLoop(session)),
+                            asyncio.create_task(
+                                self.configurationDistributionLoop(session)
+                            ),
                         ]
                     )
                     # while True:
@@ -227,9 +233,9 @@ class ExclusiveServerReportComponent(Component):
                             "pm2_5": weather["PM2.5"],
                             "illumination": weather["Illuminance"],
                             "windSpeed": windSpeed["Wind_Speed"],
-                            "windDirection": windSpeed["Wind_Direction"]
+                            "windDirection": windSpeed["Wind_Direction"],
                         }
-                    }
+                    },
                 )
             except asyncio.CancelledError:
                 raise
@@ -255,12 +261,13 @@ class ExclusiveServerReportComponent(Component):
                 state = await self.stateUpdateQueue.get()
 
                 await session.execute(
-                    self.stateReportGql, {
+                    self.stateReportGql,
+                    {
                         "$lightState": {
                             "enableWirelessCharging": state.enableWirelessCharging,
-                            "wirelessChargingPower": state.wirelessChargingPower
+                            "wirelessChargingPower": state.wirelessChargingPower,
                         }
-                    }
+                    },
                 )
             except asyncio.CancelledError:
                 raise
@@ -270,8 +277,8 @@ class ExclusiveServerReportComponent(Component):
 
     configurationDistributionGql = gql(
         """
-        subscription updateConfiguration {
-          updateConfiguration  {
+        subscription updateConfigurationEvent {
+          updateConfigurationEvent  {
             key
             value
           }
@@ -282,15 +289,19 @@ class ExclusiveServerReportComponent(Component):
     async def configurationDistributionLoop(self, session: AsyncClientSession):
         while True:
             try:
-                async for result in session.subscribe(self.configurationDistributionGql):
-                    message = result["updateConfiguration"]
+                async for result in session.subscribe(
+                    self.configurationDistributionGql
+                ):
+                    message = result["updateConfigurationEvent"]
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self.logger.exception(f"configurationDistributionLoop exception: {str(e)}")
+                self.logger.exception(
+                    f"configurationDistributionLoop exception: {str(e)}"
+                )
                 await asyncio.sleep(5)
 
     loginGql = """
@@ -300,10 +311,12 @@ class ExclusiveServerReportComponent(Component):
         """
 
     detectionReportGql = """
-        mutation detectionReport($detectionInput: DetectionInput!) {
-          lightSelf {
-            reportDetection(detectionInput: $detectionInput) {
-              resultType
+        mutation ($lightState : LightStateInput, $lightName : String!){
+          self {
+            getLightByName(name : $lightName) {
+              reportState(lightState : $lightState) {
+              	resultType
+              }
             }
           }
         }
@@ -326,15 +339,15 @@ class ExclusiveServerReportComponent(Component):
                                 "variables": {
                                     "username": self.username,
                                     "password": self.password,
-                                }
+                                },
                             }
                         ),
-                        content_type="application/json"
+                        content_type="application/json",
                     )
 
                     async with session.post(
-                            self.httpUrl,
-                            data=data,
+                        self.httpUrl,
+                        data=data,
                     ) as response:
 
                         if response.status != 200:
@@ -353,6 +366,11 @@ class ExclusiveServerReportComponent(Component):
 
                     res: detection.Result = await self.identifyKeyframeQueue.get()
 
+                    if len(res.cellMap) == 0:
+                        continue
+
+                    height, width = res.inputImage.shape[:2]
+
                     detections = []
 
                     model: detection.Model
@@ -364,16 +382,14 @@ class ExclusiveServerReportComponent(Component):
                         modelName: str = model.name
 
                         for cell in cells:
-                            box: Box = cell.box
+                            box: Box = cell.box.normalization(width, height)
                             detections.append(
                                 {
-                                    "x": box.x,
-                                    "y": box.y,
-                                    "w": box.w,
-                                    "h": box.h,
-
-                                    "probability": cell.probability,
-
+                                    "x": float(box.x),
+                                    "y": float(box.y),
+                                    "w": float(box.w),
+                                    "h": float(box.h),
+                                    "probability": float(cell.probability),
                                     "model": modelName,
                                     "item": cell.item.name,
                                 }
@@ -389,22 +405,19 @@ class ExclusiveServerReportComponent(Component):
                                 "variables": {
                                     "detectionInput": {
                                         "items": detections,
-                                        "image": None
-                                    }
-                                }
+                                        "image": None,
+                                    },
+                                    "lightName" : self.localName,
+                                },
                             }
                         ),
-                        content_type="application/json"
+                        content_type="application/json",
                     )
 
                     data.add_field(
                         "map",
-                        json.dumps(
-                            {
-                                "image": ["variables.detectionInput.image"]
-                            }
-                        ),
-                        content_type="application/json"
+                        json.dumps({"image": ["variables.detectionInput.image"]}),
+                        content_type="application/json",
                     )
 
                     image: cv2.typing.MatLike = res.inputImage
@@ -417,7 +430,11 @@ class ExclusiveServerReportComponent(Component):
 
                     # _, jpeg_buffer = cv2.imencode(".jpg", img_rgb, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                     _, jpeg_buffer = await asyncio.get_event_loop().run_in_executor(
-                        None, cv2.imencode, ".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+                        None,
+                        cv2.imencode,
+                        ".jpg",
+                        image,
+                        [int(cv2.IMWRITE_JPEG_QUALITY), 90],
                     )
                     jpeg_bytes = jpeg_buffer.tobytes()
                     image_file = BytesIO(jpeg_bytes)
@@ -426,22 +443,18 @@ class ExclusiveServerReportComponent(Component):
                         "image",
                         image_file,
                         filename="image.jpg",
-                        content_type="image/jpeg"
+                        content_type="image/jpeg",
                     )
 
                     async with session.post(
-                            self.httpUrl,
-                            data=data,
-                            headers={
-                                "Authorization": f"{jwt}"
-                            }
+                        self.httpUrl, data=data, headers={"Authorization": f"{jwt}"}
                     ) as response:
 
                         if response.status != 200:
                             raise Exception(f"http error: {str(response.status)}")
 
-                        result = response.json()
-                        if result.errors is not None:
+                        result = await response.json()
+                        if "errors" in result and result["errors"] is not None:
                             raise Exception(f"result errors: \n{result}")
 
             except asyncio.CancelledError:

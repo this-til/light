@@ -92,7 +92,7 @@ class UartComponent(Component):
                 self.logger.exception(f"Error reading from serial: {str(e)}")
                 await asyncio.sleep(5)
 
-    async def writeAsync(self, data: bytes):
+    def writeAsync(self, data: bytes):
         #self.uart.write(data)
         return asyncio.get_event_loop().run_in_executor(
             None, self.uart.write, data
