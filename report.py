@@ -11,6 +11,7 @@ import detection
 import main
 from typing import cast
 from gql import gql, Client
+from gql.transport.exceptions import TransportError
 from gql.transport.websockets import WebsocketsTransport
 from gql.transport.aiohttp import AIOHTTPTransport
 from websockets import Subprotocol
@@ -237,7 +238,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except asyncio.CancelledError:
+            except asyncio.CancelledError or TransportError:
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -269,7 +270,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except asyncio.CancelledError:
+            except asyncio.CancelledError or TransportError:
                 raise
             except Exception as e:
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
@@ -296,7 +297,7 @@ class ExclusiveServerReportComponent(Component):
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except asyncio.CancelledError:
+            except asyncio.CancelledError or TransportError:
                 raise
             except Exception as e:
                 self.logger.exception(
