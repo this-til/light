@@ -177,31 +177,30 @@ class ExclusiveServerReportComponent(Component):
                     transport=ws, fetch_schema_from_transport=False
                 ) as session:
 
-                    await asyncio.wait(
-                        [
-                            asyncio.create_task(self.sensorReportLoop(session)),
-                            asyncio.create_task(self.stateReportLoop(session)),
-                            asyncio.create_task(
-                                self.configurationDistributionLoop(session)
-                            ),
-                        ]
+                    taskList = [
+                        asyncio.create_task(self.sensorReportLoop(session)),
+                        asyncio.create_task(self.stateReportLoop(session)),
+                        asyncio.create_task(
+                            self.configurationDistributionLoop(session)
+                        ),
+                    ]
+
+                    done, pending = await asyncio.wait(
+                        taskList, return_when=asyncio.FIRST_EXCEPTION
                     )
-                    # while True:
-                    #    self.publishTask(tasks, session)
-                    #    try:
-                    #        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-                    #    except asyncio.CancelledError:
-                    #        raise
-                    #    except Exception as e:
-                    #        self.logger.exception(f"Websocket Loop 发生异常: {str(e)}")
+                    
+                    for task in taskList:
+                        if task.exception() is not None:
+                            elf.logger.exception(f"Websocket Client 发生异常: {task.exception()}")
+                        task.cancel()
+                        
+                    await asyncio.sleep(5)
+
 
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"Websocket Client 发生异常: {str(e)}")
-                for task in tasks:
-                    if task is not None:
-                        task.cancel()
                 await asyncio.sleep(5)
 
     sensorReportGql = gql(
@@ -238,7 +237,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except asyncio.CancelledError or TransportError:
+            except (asyncio.CancelledError, TransportError):
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -270,7 +269,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except asyncio.CancelledError or TransportError:
+            except (asyncio.CancelledError, TransportError):
                 raise
             except Exception as e:
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
@@ -297,7 +296,7 @@ class ExclusiveServerReportComponent(Component):
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except asyncio.CancelledError or TransportError:
+            except (asyncio.CancelledError, TransportError):
                 raise
             except Exception as e:
                 self.logger.exception(
@@ -312,10 +311,10 @@ class ExclusiveServerReportComponent(Component):
         """
 
     detectionReportGql = """
-        mutation ($lightState : LightStateInput, $lightName : String!){
+        mutation ($detectionInput : DetectionInput!, $lightName : String!){
           self {
             getLightByName(name : $lightName) {
-              reportDetection(lightState : $lightState) {
+              reportDetection(detectionInput : $detectionInput) {
               	resultType
               }
             }
@@ -396,6 +395,9 @@ class ExclusiveServerReportComponent(Component):
                                 }
                             )
 
+                    if len(detections) == 0:
+                        continue
+
                     data = aiohttp.FormData()
 
                     data.add_field(
@@ -408,7 +410,7 @@ class ExclusiveServerReportComponent(Component):
                                         "items": detections,
                                         "image": None,
                                     },
-                                    "lightName" : self.localName,
+                                    "lightName": self.localName,
                                 },
                             }
                         ),

@@ -199,7 +199,7 @@ class CameraComponent(Component):
             try:
                 sourceFrame: cv2.typing.MatLike = await framesQueue.get()
                 res: detection.Result = self.main.detectionComponent.runDetection(
-                    sourceFrame, [self.main.detectionComponent.carAccidentModel]
+                    sourceFrame, [self.main.detectionComponent.fallDownModel]
                 )
                 await self.identifyKeyframe.publish(res)
                 await asyncio.sleep(3) 
