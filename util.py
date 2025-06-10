@@ -393,11 +393,11 @@ def getAllTasks() -> list[asyncio.Task]:
     return [t for t in tasks if t is not current_task]
 
 
-async def gracefulShutdown():
+async def gracefulShutdown(tasks : list[asyncio.Task]  | None =  None) -> None:
     """
     优雅关闭所有异步任务
     """
-    tasks = getAllTasks()
+    tasks = tasks or getAllTasks()
     for task in tasks:
         task.cancel()  # 发送取消信号
 
