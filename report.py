@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import json
+import util
 from io import BytesIO
 
 import cv2
@@ -14,7 +15,7 @@ from gql import gql, Client
 from gql.transport.exceptions import TransportError
 from gql.transport.websockets import WebsocketsTransport
 from gql.transport.aiohttp import AIOHTTPTransport
-from websockets import Subprotocol
+from websockets import Subprotocol, WebSocketException
 
 from main import Component, ConfigField
 from util import Box
@@ -171,26 +172,20 @@ class ExclusiveServerReportComponent(Component):
 
             try:
                 async with Client(
-                    transport=ws, fetch_schema_from_transport=False
+                        transport=ws, fetch_schema_from_transport=False
                 ) as session:
 
                     taskList = [
                         asyncio.create_task(self.sensorReportLoop(session)),
                         asyncio.create_task(self.stateReportLoop(session)),
-                        asyncio.create_task(
-                            self.configurationDistributionLoop(session)
-                        ),
+                        asyncio.create_task(self.configurationDistributionLoop(session)),
                     ]
 
                     done, pending = await asyncio.wait(
                         taskList, return_when=asyncio.FIRST_EXCEPTION
                     )
-                    
-                    for task in taskList:
-                        if task.exception() is not None:
-                            self.logger.exception(f"Websocket Client 发生异常: {task.exception()}")
-                        task.cancel()
-                        
+
+                    await util.gracefulShutdown(taskList)
                     await asyncio.sleep(5)
 
 
@@ -234,7 +229,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except (asyncio.CancelledError, TransportError):
+            except (asyncio.CancelledError, TransportError, WebSocketException):
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -266,7 +261,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except (asyncio.CancelledError, TransportError):
+            except (asyncio.CancelledError, TransportError, WebSocketException):
                 raise
             except Exception as e:
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
@@ -287,13 +282,13 @@ class ExclusiveServerReportComponent(Component):
         while True:
             try:
                 async for result in session.subscribe(
-                    self.configurationDistributionGql
+                        self.configurationDistributionGql
                 ):
                     message = result["updateConfigurationEvent"]
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except (asyncio.CancelledError, TransportError):
+            except (asyncio.CancelledError, TransportError, WebSocketException):
                 raise
             except Exception as e:
                 self.logger.exception(
@@ -343,8 +338,8 @@ class ExclusiveServerReportComponent(Component):
                     )
 
                     async with session.post(
-                        self.httpUrl,
-                        data=data,
+                            self.httpUrl,
+                            data=data,
                     ) as response:
 
                         if response.status != 200:
@@ -447,7 +442,7 @@ class ExclusiveServerReportComponent(Component):
                     )
 
                     async with session.post(
-                        self.httpUrl, data=data, headers={"Authorization": f"{jwt}"}
+                            self.httpUrl, data=data, headers={"Authorization": f"{jwt}"}
                     ) as response:
 
                         if response.status != 200:
