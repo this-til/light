@@ -168,32 +168,61 @@ class ExclusiveServerReportComponent(Component):
     async def webSocketTransportLoop(self):
         ws = self.establishLink()
 
-        while True:
+        client = Client(
+            transport=ws,
+            fetch_schema_from_transport=False
+        )
 
-            try:
-                async with Client(
-                        transport=ws, fetch_schema_from_transport=False
-                ) as session:
+        try:
 
-                    taskList = [
-                        asyncio.create_task(self.sensorReportLoop(session)),
-                        asyncio.create_task(self.stateReportLoop(session)),
-                        asyncio.create_task(self.configurationDistributionLoop(session)),
-                    ]
+            session = await client.connect_async(True, retry_execute=False)
 
-                    done, pending = await asyncio.wait(
-                        taskList, return_when=asyncio.FIRST_EXCEPTION
-                    )
+            taskList = [
+                asyncio.create_task(self.sensorReportLoop(session)),
+                asyncio.create_task(self.stateReportLoop(session)),
+                asyncio.create_task(self.configurationDistributionLoop(session)),
+            ]
 
-                    await util.gracefulShutdown(taskList)
-                    await asyncio.sleep(5)
+            done, pending = await asyncio.wait(
+                taskList, return_when=asyncio.FIRST_EXCEPTION
+            )
 
+            await util.gracefulShutdown(taskList)
 
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                self.logger.exception(f"Websocket Client 发生异常: {str(e)}")
-                await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            await client.close_async()
+
+    #    async def webSocketTransportLoop(self):
+    #        ws = self.establishLink()
+    #
+    #        while True:
+    #
+    #            try:
+    #                async with Client(
+    #                        transport=ws, fetch_schema_from_transport=False
+    #                ) as session:
+    #
+    #                    taskList = [
+    #                        asyncio.create_task(self.sensorReportLoop(session)),
+    #                        asyncio.create_task(self.stateReportLoop(session)),
+    #                        asyncio.create_task(self.configurationDistributionLoop(session)),
+    #                    ]
+    #
+    #                    done, pending = await asyncio.wait(
+    #                        taskList, return_when=asyncio.FIRST_EXCEPTION
+    #                    )
+    #
+    #                    await util.gracefulShutdown(taskList)
+    #                    await asyncio.sleep(5)
+    #
+    #
+    #            except asyncio.CancelledError:
+    #                raise
+    #            except Exception as e:
+    #                self.logger.exception(f"Websocket Client 发生异常: {str(e)}")
+    #                await asyncio.sleep(5)
 
     sensorReportGql = gql(
         """
@@ -229,7 +258,8 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except (asyncio.CancelledError, TransportError, WebSocketException):
+            # except (asyncio.CancelledError, TransportError, WebSocketException):
+            except (asyncio.CancelledError):
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -261,7 +291,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except (asyncio.CancelledError, TransportError, WebSocketException):
+            except (asyncio.CancelledError):
                 raise
             except Exception as e:
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
@@ -288,7 +318,7 @@ class ExclusiveServerReportComponent(Component):
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except (asyncio.CancelledError, TransportError, WebSocketException):
+            except (asyncio.CancelledError):
                 raise
             except Exception as e:
                 self.logger.exception(
