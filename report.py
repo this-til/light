@@ -62,14 +62,12 @@ class MqttReportComponent(Component):
 
     async def mqttReportLoop(self):
 
-        event = await self.main.deviceComponent.dataUpdate.subscribe(asyncio.Event())
+        queue = await self.main.deviceComponent.dataUpdate.subscribe(asyncio.Queue(maxsize=8))
 
         while True:
 
             try:
-                await event.wait()
-                event.clear()
-                data = self.main.deviceComponent.deviceValue
+                data = await queue.get()
                 modbus = data["Modbus"]
                 weather = modbus["Weather"]
 
@@ -168,7 +166,6 @@ class ExclusiveServerReportComponent(Component):
 
     async def webSocketTransportLoop(self):
         ws = self.establishLink()
-        tasks: list[asyncio.Task] = [None, None, None]  # type: ignore
 
         while True:
 
@@ -191,7 +188,7 @@ class ExclusiveServerReportComponent(Component):
                     
                     for task in taskList:
                         if task.exception() is not None:
-                            elf.logger.exception(f"Websocket Client 发生异常: {task.exception()}")
+                            self.logger.exception(f"Websocket Client 发生异常: {task.exception()}")
                         task.cancel()
                         
                     await asyncio.sleep(5)
