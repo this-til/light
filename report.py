@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 import util
+import backoff
 from io import BytesIO
 
 import cv2
@@ -175,7 +176,16 @@ class ExclusiveServerReportComponent(Component):
 
         try:
 
-            session = await client.connect_async(True, retry_execute=False)
+
+            session = await client.connect_async(
+                True,
+                retry_execute=False,
+                retry_connect=backoff.on_exception(
+                    backoff.constant,
+                    Exception,
+                    interval=5,
+                )
+            )
 
             taskList = [
                 asyncio.create_task(self.sensorReportLoop(session)),
@@ -259,7 +269,7 @@ class ExclusiveServerReportComponent(Component):
                     },
                 )
             # except (asyncio.CancelledError, TransportError, WebSocketException):
-            except (asyncio.CancelledError):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -291,7 +301,7 @@ class ExclusiveServerReportComponent(Component):
                         }
                     },
                 )
-            except (asyncio.CancelledError):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
@@ -318,7 +328,7 @@ class ExclusiveServerReportComponent(Component):
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except (asyncio.CancelledError):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(
