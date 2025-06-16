@@ -15,7 +15,7 @@ logging.config.dictConfig(
     {
         "version": 1,
         "loggers": {
-            "gql": {  # 专门针对gql库
+            "websockets.client": {  # 专门针对gql库
                 "level": "WARN",  # 设置日志等级
                 "handlers": ["console"],
                 "propagate": False,  # 阻止传播到根记录器
