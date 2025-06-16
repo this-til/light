@@ -237,9 +237,11 @@ class ExclusiveServerReportComponent(Component):
     sensorReportGql = gql(
         """
         mutation reportUpdate($lightDataInput : LightDataInput!) {
-            lightSelf {
-                reportUpdate (lightDataInput: $lightDataInput) {
-                    resultType
+            deviceSelf {
+                asLight {
+                    reportUpdate (lightDataInput: $lightDataInput) {
+                        resultType
+                    }
                 }
             }
         }
@@ -278,9 +280,11 @@ class ExclusiveServerReportComponent(Component):
     stateReportGql = gql(
         """
         mutation reportState($lightState : LightStateInput){
-          lightSelf {
-            reportState(lightState : $lightState) {
-              resultType
+          deviceSelf {
+            asLight {
+              reportState(lightState : $lightState) {
+                resultType
+              }
             }
           }
         }
@@ -295,7 +299,7 @@ class ExclusiveServerReportComponent(Component):
                 await session.execute(
                     self.stateReportGql,
                     {
-                        "$lightState": {
+                        "lightState": {
                             "enableWirelessCharging": state.enableWirelessCharging,
                             "wirelessChargingPower": state.wirelessChargingPower,
                         }
@@ -345,9 +349,11 @@ class ExclusiveServerReportComponent(Component):
     detectionReportGql = """
         mutation ($detectionInput : DetectionInput!, $lightName : String!){
           self {
-            getLightByName(name : $lightName) {
-              reportDetection(detectionInput : $detectionInput) {
-              	resultType
+            getDeviceByName(name : $lightName, deviceType: LIGHT) {
+              asLight {
+                reportDetection(detectionInput : $detectionInput) {
+                  resultType
+                }
               }
             }
           }
