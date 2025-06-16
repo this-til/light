@@ -47,6 +47,7 @@ class Cell:
 
 class Model:
     name: str
+    pathName : str
     itemList: list[Item]
     path: str
     size: tuple[int, int]
@@ -58,11 +59,13 @@ class Model:
     def __init__(
             self,
             name: str,
+            pathName: str,
             itemList: list[Item],
             detectionComponent: 'DetectionComponent',
             size: tuple[int, int] = (640, 640),
     ):
         self.name = name
+        self.pathName = pathName
         self.itemList = itemList
         self.detectionComponent = detectionComponent
         self.size = size
@@ -76,7 +79,7 @@ class Model:
 
         self.rknn = RKNN()
 
-        self.path = f"{self.detectionComponent.modelPath}/{self.name}.rknn"
+        self.path = f"{self.detectionComponent.modelPath}/{self.pathName}.rknn"
         self.rknn.load_rknn(self.path)
 
         logger.info(f"load rknn model: {self.path}")
@@ -364,18 +367,18 @@ class Result:
 
 
 class CarAccidentModel(Model):
-    accident = Item("accident", Color(255, 0, 0))
+    accident = Item("车祸", Color(255, 0, 0))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("accident", [self.accident], detectionComponent)
+        super().__init__("车祸","accident", [self.accident], detectionComponent)
 
 
 class FallDownModel(Model):
-    fallDown = Item("fall down", Color(255, 150, 51))
-    standPerson = Item("stand person", Color(100, 255, 100))
+    fallDown = Item("摔倒", Color(255, 150, 51))
+    standPerson = Item("站立", Color(100, 255, 100))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("fallDown", [self.fallDown, self.standPerson], detectionComponent)
+        super().__init__("倒地","fallDown", [self.fallDown, self.standPerson], detectionComponent)
 
 
 class CarModel(Model):
@@ -388,6 +391,7 @@ class CarModel(Model):
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
         super().__init__(
+            "车型",
             "car",
             [
                 self.electricBicycle,
@@ -405,14 +409,14 @@ class FaceModel(Model):
     face = Item("人脸", Color(255, 255, 255))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("face", [self.face], detectionComponent)
+        super().__init__("人脸", "face", [self.face], detectionComponent)
 
 
 class AccumulatedWater(Model):
     accumulatedWater = Item("积水", Color(0, 0, 255))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("accumulatedWater", [self.accumulatedWater], detectionComponent)
+        super().__init__("积水","accumulatedWater", [self.accumulatedWater], detectionComponent)
 
 
 OBJ_THRESH: float = 0.5
