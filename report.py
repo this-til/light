@@ -176,7 +176,6 @@ class ExclusiveServerReportComponent(Component):
 
         try:
 
-
             session = await client.connect_async(
                 True,
                 retry_execute=False,
@@ -199,7 +198,7 @@ class ExclusiveServerReportComponent(Component):
 
             await util.gracefulShutdown(taskList)
 
-        except asyncio.CancelledError:
+        except asyncio.CancelledError or TransportError:
             raise
         finally:
             await client.close_async()
@@ -271,7 +270,7 @@ class ExclusiveServerReportComponent(Component):
                     },
                 )
             # except (asyncio.CancelledError, TransportError, WebSocketException):
-            except asyncio.CancelledError:
+            except asyncio.CancelledError or TransportError:
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -332,7 +331,7 @@ class ExclusiveServerReportComponent(Component):
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except asyncio.CancelledError:
+            except asyncio.CancelledError or TransportError:
                 raise
             except Exception as e:
                 self.logger.exception(
