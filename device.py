@@ -5,6 +5,7 @@ import logging
 import uart
 import json
 import util
+import copy
 
 import main
 
@@ -106,7 +107,7 @@ class DeviceComponent(Component):
 
                     if "Data" in decoded:
                         self.deviceValue = decoded["Data"]
-                        await self.dataUpdate.publish(self.deviceValue)
+                        await self.dataUpdate.publish(copy.deepcopy(self.deviceValue))
 
             except asyncio.CancelledError:
                 raise
@@ -114,7 +115,7 @@ class DeviceComponent(Component):
                 self.logger.exception(f"处理串口数据时发生异常: {str(e)}")
 
     async def detectionChangeLoop(self):
-        queue = await self.main.configureComponent.configureChange.subscribe(
+        queue = await self.main.configureComponent.commandEvent.subscribe(
             asyncio.Queue(maxsize=16)
         )
 
@@ -181,9 +182,9 @@ class DeviceComponent(Component):
     def getDeviceValue(self, key: str):
         return util.getFromJson(key, self.deviceValue)
 
-    def setDeviceValue(self, key: str, value):
+    async def setDeviceValue(self, key: str, value):
         util.setFromJson(key, value, self.deviceValue)
-        self.dataUpdate.publish_nowait(self.deviceValue)
+        await self.dataUpdate.publish(copy.deepcopy(self.deviceValue))
 
     def sendCommand(self, command: Command) -> Command:
         self.commandId += 1

@@ -31,7 +31,7 @@ class OrbbecCameraComponent(Component):
         await super().init()
         if self.enable:
             asyncio.create_task(self.readImageLoop())
-            asyncio.create_task(self.handleFrames())
+            #asyncio.create_task(self.handleFrames())
             
             if self.enablePushFrames:
                 asyncio.create_task(self.pushFrames())
@@ -101,26 +101,26 @@ class OrbbecCameraComponent(Component):
                 await asyncio.sleep(5)
             pass
 
-    async def handleFrames(self):
-
-        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
-            asyncio.Queue(maxsize=1)
-        )
-
-        while True:
-            try:
-               frame = await framesQueue.get()
-               
-               await asyncio.get_event_loop().run_in_executor(
-                   None, self.main.detectionComponent.runDetection, frame, [self.main.detectionComponent.faceModel]
-               )
-               
-               await asyncio.sleep(3)  
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                self.logger.exception(f"处理帧时发生异常: {str(e)}")
-            pass
+#    async def handleFrames(self):
+#
+#        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+#            asyncio.Queue(maxsize=1)
+#        )
+#
+#        while True:
+#            try:
+#               frame = await framesQueue.get()
+#
+#               await asyncio.get_event_loop().run_in_executor(
+#                   None, self.main.detectionComponent.runDetection, frame, [self.main.detectionComponent.faceModel]
+#               )
+#
+#               await asyncio.sleep(3)
+#            except asyncio.CancelledError:
+#                raise
+#            except Exception as e:
+#                self.logger.exception(f"处理帧时发生异常: {str(e)}")
+#            pass
 
     async def pushFrames(self):
         await FFmpegPushFrame(

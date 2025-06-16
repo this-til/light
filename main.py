@@ -129,11 +129,13 @@ class Mian:
         from detection import DetectionComponent
         from audio import AudioComponent
         from device import DeviceComponent
-        from report import MqttReportComponent
+        from mqtt_report import MqttReportComponent
         from report import ExclusiveServerReportComponent
         from hkws_sdk import HCNetSdkComponent
         from server import ServerComponent
         from microphone import MicrophoneComponent
+        from state import StateComponent
+        from command import CommandComponent
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
@@ -147,6 +149,8 @@ class Mian:
         self.audioComponent = AudioComponent()
         self.serverComponent = ServerComponent()
         self.microphoneComponent = MicrophoneComponent()
+        self.stateComponent = StateComponent()
+        self.commandComponent = CommandComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
@@ -160,6 +164,8 @@ class Mian:
         self.components.append(self.audioComponent)
         self.components.append(self.serverComponent)
         self.components.append(self.microphoneComponent)
+        self.components.append(self.stateComponent)
+        self.components.append(self.commandComponent)
 
         for component in self.components:
             component.main = self  # type: ignore

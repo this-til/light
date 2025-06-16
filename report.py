@@ -26,86 +26,6 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
-class LightState:
-    enableWirelessCharging: bool
-    wirelessChargingPower: float
-
-
-class MqttReportComponent(Component):
-    enable: ConfigField[bool] = ConfigField()
-
-    receiveTopic: ConfigField[str] = ConfigField()
-    updataTopic: ConfigField[str] = ConfigField()
-    clientId: ConfigField[str] = ConfigField()
-    ip: ConfigField[str] = ConfigField()
-    port: ConfigField[int] = ConfigField()
-    userName: ConfigField[str] = ConfigField()
-    password: ConfigField[str] = ConfigField()
-
-    client: mqtt.Client = None  # type: ignore
-
-    async def init(self):
-        await super().init()
-
-        if self.enable:
-            self.client = mqtt.Client(client_id=self.clientId)
-
-            self.client.subscribe(self.receiveTopic)
-            self.client.subscribe(self.updataTopic)
-
-            self.client.on_connect = self.onConnect
-            self.client.on_message = self.onMessage
-
-            self.client.username_pw_set(self.userName, self.password)
-            self.client.connect(self.ip, self.port)
-            self.client.loop_start()  # 使用非阻塞循环
-
-        # asyncio.create_task(self.mqttReportLoop())
-
-    async def mqttReportLoop(self):
-
-        queue = await self.main.deviceComponent.dataUpdate.subscribe(asyncio.Queue(maxsize=8))
-
-        while True:
-
-            try:
-                data = await queue.get()
-                modbus = data["Modbus"]
-                weather = modbus["Weather"]
-
-                windSpeed = modbus["Wind_Speed"]
-
-                self.client.publish(
-                    self.updataTopic,
-                    json.dumps(
-                        {
-                            "湿度": weather["Humidity"],
-                            "温度": weather["Temperature"],
-                            "PM10": weather["PM10"],
-                            "PM2.5": weather["PM2.5"],
-                            "光照": weather["Illuminance"],
-                            "风速": windSpeed["Wind_Speed"],
-                            "风向": windSpeed["Wind_Direction"],
-                        }
-                    ),
-                )
-
-                await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                self.logger.exception(f"发布数据时发生异常: {str(e)}")
-
-    def onConnect(self, client, userdata, flags, rc):
-        if rc == 0:
-            logger.debug("成功连接至MQTT服务器!")
-        else:
-            logger.debug(f"连接失败，错误码: {rc}")
-
-    def onMessage(self, client, userdata, msg):
-        logger.debug(f"收到消息: Topic={msg.topic}, Payload={msg.payload.decode()}")
-
-
 class ExclusiveServerReportComponent(Component):
     enable: ConfigField[bool] = ConfigField()
 
@@ -120,16 +40,30 @@ class ExclusiveServerReportComponent(Component):
     subprotocol: ConfigField[str] = ConfigField()
 
     dataUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
-    stateUpdateQueue: asyncio.Queue[LightState] = asyncio.Queue(
-        maxsize=8
-    )  # TODO subscribe stateUpdateQueue
-    identifyKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
+    stateUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
+    detectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
+    sustainedDetectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
+
+    commandDownEventGql = gql(
+        """
+        subscription commandDownEvent {
+            commandDownEvent {
+                key
+                value
+            }
+        }
+        """
+    )
 
     async def init(self):
         if self.enable:
             await self.main.deviceComponent.dataUpdate.subscribe(self.dataUpdateQueue)
-            await self.main.cameraComponent.identifyKeyframe.subscribe(
-                self.identifyKeyframeQueue
+            await self.main.stateComponent.stateChange.subscribe(self.stateUpdateQueue)
+            await self.main.cameraComponent.detectionKeyframe.subscribe(
+                self.detectionKeyframeQueue
+            )
+            await  self.main.cameraComponent.sustainedDetectionKeyframe.subscribe(
+                self.sustainedDetectionKeyframeQueue
             )
 
             asyncio.create_task(self.webSocketTransportLoop())
@@ -190,6 +124,8 @@ class ExclusiveServerReportComponent(Component):
                 asyncio.create_task(self.sensorReportLoop(session)),
                 asyncio.create_task(self.stateReportLoop(session)),
                 asyncio.create_task(self.configurationDistributionLoop(session)),
+                asyncio.create_task(self.sustainedDetectionReportLoop(session)),
+                asyncio.create_task(self.commandDownEventLoop(session)),
             ]
 
             done, pending = await asyncio.wait(
@@ -298,10 +234,11 @@ class ExclusiveServerReportComponent(Component):
                 await session.execute(
                     self.stateReportGql,
                     {
-                        "lightState": {
-                            "enableWirelessCharging": state.enableWirelessCharging,
-                            "wirelessChargingPower": state.wirelessChargingPower,
-                        }
+                        "lightState": state
+                        #"lightState": {
+                        #    "enableWirelessCharging": state.enableWirelessCharging,
+                        #    "wirelessChargingPower": state.wirelessChargingPower,
+                        #}
                     },
                 )
             except asyncio.CancelledError:
@@ -359,6 +296,32 @@ class ExclusiveServerReportComponent(Component):
         }
         """
 
+    def convertDetectionResultToItems(self, res: detection.Result) -> list[dict]:
+        """Convert detection result to reportable items"""
+        height, width = res.inputImage.shape[:2]
+        items = []
+
+        model: detection.Model
+        cells: list[detection.Cell]
+        cell: detection.Cell
+
+        for model, cells in res.cellMap.items():
+            modelName: str = model.name
+            for cell in cells:
+                box: Box = cell.box.normalization(width, height)
+                items.append(
+                    {
+                        "x": float(box.x),
+                        "y": float(box.y),
+                        "w": float(box.w),
+                        "h": float(box.h),
+                        "probability": float(cell.probability),
+                        "model": modelName,
+                        "item": cell.item.name,
+                    }
+                )
+        return items
+
     async def detectionReportLoop(self):
 
         while True:
@@ -401,38 +364,9 @@ class ExclusiveServerReportComponent(Component):
                         if jwt is None:
                             raise Exception(f"not obtained jwt")
 
-                    res: detection.Result = await self.identifyKeyframeQueue.get()
-
-                    if len(res.cellMap) == 0:
-                        continue
-
-                    height, width = res.inputImage.shape[:2]
-
-                    detections = []
-
-                    model: detection.Model
-                    cells: list[detection.Cell]
-                    cell: detection.Cell
-
-                    for model, cells in res.cellMap.items():
-
-                        modelName: str = model.name
-
-                        for cell in cells:
-                            box: Box = cell.box.normalization(width, height)
-                            detections.append(
-                                {
-                                    "x": float(box.x),
-                                    "y": float(box.y),
-                                    "w": float(box.w),
-                                    "h": float(box.h),
-                                    "probability": float(cell.probability),
-                                    "model": modelName,
-                                    "item": cell.item.name,
-                                }
-                            )
-
-                    if len(detections) == 0:
+                    res: detection.Result = await self.detectionKeyframeQueue.get()
+                    items = self.convertDetectionResultToItems(res)
+                    if len(items) == 0:
                         continue
 
                     data = aiohttp.FormData()
@@ -444,7 +378,7 @@ class ExclusiveServerReportComponent(Component):
                                 "query": self.detectionReportGql,
                                 "variables": {
                                     "detectionInput": {
-                                        "items": detections,
+                                        "items": items,
                                         "image": None,
                                     },
                                     "lightName": self.localName,
@@ -501,4 +435,51 @@ class ExclusiveServerReportComponent(Component):
                 raise
             except Exception as e:
                 self.logger.exception(f"上传关键帧时发生异常: {str(e)}")
+                await asyncio.sleep(5)
+
+    sustainedDetectionReportGql = gql(
+        """
+        mutation sustainedReportDetection($items: [DetectionItemInput!]!) {
+            deviceSelf {
+                asLight {
+                    sustainedReportDetection(items: $items) {
+                        resultType
+                    }
+                }
+            }
+        }
+        """
+    )
+
+    async def sustainedDetectionReportLoop(self, session: AsyncClientSession):
+        while True:
+            try:
+                res: detection.Result = await self.sustainedDetectionKeyframeQueue.get()
+                items = self.convertDetectionResultToItems(res)
+
+                await session.execute(
+                    self.sustainedDetectionReportGql,
+                    {"items": items}
+                )
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"sustainedDetectionReportLoop exception: {str(e)}")
+                await asyncio.sleep(5)
+
+    async def commandDownEventLoop(self, session: AsyncClientSession):
+        """Handle incoming command down events"""
+        while True:
+            try:
+                async for result in session.subscribe(self.commandDownEventGql):
+                    message = result["commandDownEvent"]
+                    key = message["key"]
+                    value = message["value"]
+                    await self.main.commandComponent.onCommand(key, value)
+
+            except (asyncio.CancelledError, TransportError):
+                raise
+            except Exception as e:
+                self.logger.exception(f"commandDownEventLoop exception: {str(e)}")
                 await asyncio.sleep(5)

@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 
-
 import cv2
 
 import detection
@@ -13,9 +12,9 @@ import util
 from main import Component, ConfigField
 from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
 from typing import Sequence
+from command import CommandEvent
 
 logger = logging.getLogger(__name__)
-
 
 # 音频参数
 FREQUENCY = 16000  # 采样率16kHz
@@ -46,10 +45,16 @@ class CameraComponent(Component):
 
     source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
     audioSource: Broadcaster[bytes] = Broadcaster()
-    #out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
-    identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
+    # out: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+    detectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
     cap: cv2.VideoCapture = None  # type: ignore
+
+    sustainedDetection = False
+    sustainedDetectionModel: detection.Model = None
+    sustainedDetectionCondition = asyncio.Condition()
+
+    sustainedDetectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
     userId: int = -1
     realHandle: int = -1
@@ -66,6 +71,7 @@ class CameraComponent(Component):
         if self.enable:
             asyncio.create_task(self.extractAudio())
             asyncio.create_task(self.readFrames())
+            asyncio.create_task(self.)
 
             if self.enableDetection:
                 asyncio.create_task(self.handleFrames())
@@ -194,64 +200,111 @@ class CameraComponent(Component):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
             asyncio.Queue(maxsize=1)
         )
-        
+
         while True:
             try:
-                sourceFrame: cv2.typing.MatLike = await framesQueue.get()
-                res: detection.Result = self.main.detectionComponent.runDetection(
-                    sourceFrame, [self.main.detectionComponent.fallDownModel]
-                )
-                await self.identifyKeyframe.publish(res)
-                await asyncio.sleep(3) 
+                async with self.sustainedDetectionCondition:
+                    while self.sustainedDetection:
+                        await self.sustainedDetectionCondition.wait()
+
+                    sourceFrame: cv2.typing.MatLike = await framesQueue.get()
+                    res: detection.Result = await self.main.detectionComponent.runDetection(
+                        sourceFrame, [self.main.detectionComponent.fallDownModel]
+                    )
+                    await self.detectionKeyframe.publish(res)
+                    await asyncio.sleep(3)
+
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.exception(f"处理帧时发生异常: {str(e)}")
                 pass
 
-#    async def handleFrames(self):
-#
-#        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
-#            asyncio.Queue(maxsize=16)
-#        )
-#
-#        res: detection.Result | None = None
-#        task: asyncio.Future[detection.Result] | None = None
-#
-#        while True:
-#            try:
-#
-#                sourceFrame: cv2.typing.MatLike = await framesQueue.get()
-#
-#                if res is None:
-#                    res = detection.Result(sourceFrame, {})
-#
-#                if task is None or task.done():
-#
-#                    if task is not None:
-#                        res = task.result()
-#                        await self.identifyKeyframe.publish(res)
-#
-#                    task = asyncio.get_event_loop().run_in_executor(
-#                        None,
-#                        self.main.detectionComponent.runDetection,
-#                        sourceFrame,
-#                        [self.main.detectionComponent.carAccidentModel],
-#                    )
-#
-#                _res = detection.Result(sourceFrame, res.cellMap)
-#                await self.out.publish(await _res.drawOutputImageAsync())
-#
-#            except asyncio.CancelledError:
-#                raise
-#            except Exception as e:
-#                logger.exception(f"处理帧时发生异常: {str(e)}")
-#
-#                res = None
-#                if task is not None:
-#                    task.cancel()
-#                    task = None
-#            pass
+    async def sustainedHandleFrames(self):
+        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+            asyncio.Queue(maxsize=1)
+        )
+
+        while True:
+            try:
+                async with self.sustainedDetectionCondition:
+                    while not self.sustainedDetection:
+                        await self.sustainedDetectionCondition.wait()
+
+                    sourceFrame: cv2.typing.MatLike = await framesQueue.get()
+
+                    if self.sustainedDetectionModel is None:
+                        continue
+
+                    res: detection.Result = await self.main.detectionComponent.runDetection(
+                        sourceFrame, [self.sustainedDetectionModel]
+                    )
+                    await self.detectionKeyframe.publish(res)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.exception(f"处理帧时发生异常: {str(e)}")
+                pass
+
+    async def commandEventHandle(self):
+        queue : asyncio.Queue[CommandEvent] = self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=8))
+        while True:
+            try:
+                event : CommandEvent = await queue.get()
+                if event.key == "Detection.Sustained":
+                    self.sustainedDetectionModel = self.main.detectionComponent.modelMap[event.value]
+                    self.sustainedDetection = self.sustainedDetectionModel is not None
+                    self.sustainedDetectionCondition.notify_all()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.exception(f"处理命令时发生异常: {str(e)}")
+                pass
+        pass
+
+    #    async def handleFrames(self):
+    #
+    #        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+    #            asyncio.Queue(maxsize=16)
+    #        )
+    #
+    #        res: detection.Result | None = None
+    #        task: asyncio.Future[detection.Result] | None = None
+    #
+    #        while True:
+    #            try:
+    #
+    #                sourceFrame: cv2.typing.MatLike = await framesQueue.get()
+    #
+    #                if res is None:
+    #                    res = detection.Result(sourceFrame, {})
+    #
+    #                if task is None or task.done():
+    #
+    #                    if task is not None:
+    #                        res = task.result()
+    #                        await self.identifyKeyframe.publish(res)
+    #
+    #                    task = asyncio.get_event_loop().run_in_executor(
+    #                        None,
+    #                        self.main.detectionComponent.runDetection,
+    #                        sourceFrame,
+    #                        [self.main.detectionComponent.carAccidentModel],
+    #                    )
+    #
+    #                _res = detection.Result(sourceFrame, res.cellMap)
+    #                await self.out.publish(await _res.drawOutputImageAsync())
+    #
+    #            except asyncio.CancelledError:
+    #                raise
+    #            except Exception as e:
+    #                logger.exception(f"处理帧时发生异常: {str(e)}")
+    #
+    #                res = None
+    #                if task is not None:
+    #                    task.cancel()
+    #                    task = None
+    #            pass
 
     async def releaseCap(self):
         if self.cap and self.cap.isOpened():

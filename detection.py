@@ -16,7 +16,7 @@ from main import Component, ConfigField
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-inferenceLock = threading.Lock()
+inferenceLock = asyncio.Lock()
 
 
 class Item:
@@ -47,7 +47,7 @@ class Cell:
 
 class Model:
     name: str
-    pathName : str
+    pathName: str
     itemList: list[Item]
     path: str
     size: tuple[int, int]
@@ -94,44 +94,51 @@ class Model:
 
         pass
 
-    def run(self, inputImage: cv2.typing.MatLike) -> list[Cell]:
+    async def run(self, inputImage: cv2.typing.MatLike) -> list[Cell]:
         if self.rknn is None:
             raise RuntimeError("Model not loaded")
 
         h, w = inputImage.shape[:2]
         originalSize: tuple[int, int] = (h, w)
 
-        inputImage = util.changeSize(inputImage, self.size)
-        inputImage = cv2.cvtColor(inputImage, cv2.COLOR_BGR2RGB)
+        # util.changeSize(inputImage, size)
+        inputImage = await asyncio.get_event_loop().run_in_executor(None, util.changeSize, inputImage, self.size)
+        # _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
+        inputImage = await asyncio.get_event_loop().run_in_executor(None, cv2.cvtColor, inputImage, cv2.COLOR_BGR2RGB)
 
-        return self.directRun(inputImage, originalSize)
+        return await self.directRun(inputImage, originalSize)
 
-    def directRun(
+    async def directRun(
             self, inputImage: cv2.typing.MatLike, originalSize: tuple[int, int]
     ) -> list[Cell]:
 
-        with inferenceLock:
-            try:
-                res = self.rknn.inference(inputs=[inputImage], data_format="nhwc")
+        await inferenceLock.acquire()
 
-            except Exception as e:
-                logger.exception(
-                    f"this {self.path} model inference raise Exception: {str(e)} "
+        try:
+            # res = self.rknn.inference(inputs=[inputImage], data_format="nhwc")
+            res = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.rknn.inference(  # 通过lambda捕获参数
+                    inputs=[inputImage],
+                    data_format="nhwc"
                 )
-                return []
+            )
+        finally:
+            inferenceLock.release()
 
-        boxes, classes, scores = self.post_process(res)
+        def handleRes():
+            boxes, classes, scores = self.post_process(res)
+            outList: list[Cell] = []
+            if boxes is not None:
+                for box, score, cl in zip(
+                        util.realBox(boxes, originalSize, self.size), scores, classes  # type: ignore
+                ):
+                    outList.append(Cell(self.itemList[cl], box, score))
+                    pass
 
-        outList: list[Cell] = []
+            return outList
 
-        if boxes is not None:
-            for box, score, cl in zip(
-                    util.realBox(boxes, originalSize, self.size), scores, classes  # type: ignore
-            ):
-                outList.append(Cell(self.itemList[cl], box, score))
-                pass
-
-        return outList
+        return await asyncio.get_event_loop().run_in_executor(None, handleRes)
 
     def post_process(self, input_data):
         boxes, scores, classes_conf = [], [], []
@@ -269,6 +276,7 @@ class Model:
     def __str__(self):
         return self.name
 
+
 class Result:
     inputImage: cv2.typing.MatLike
     outputImage: cv2.typing.MatLike | None
@@ -370,7 +378,7 @@ class CarAccidentModel(Model):
     accident = Item("车祸", Color(255, 0, 0))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("车祸","accident", [self.accident], detectionComponent)
+        super().__init__("车祸", "accident", [self.accident], detectionComponent)
 
 
 class FallDownModel(Model):
@@ -378,7 +386,7 @@ class FallDownModel(Model):
     standPerson = Item("站立", Color(100, 255, 100))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("倒地","fallDown", [self.fallDown, self.standPerson], detectionComponent)
+        super().__init__("倒地", "fallDown", [self.fallDown, self.standPerson], detectionComponent)
 
 
 class CarModel(Model):
@@ -416,7 +424,7 @@ class AccumulatedWater(Model):
     accumulatedWater = Item("积水", Color(0, 0, 255))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("积水","accumulatedWater", [self.accumulatedWater], detectionComponent)
+        super().__init__("积水", "accumulatedWater", [self.accumulatedWater], detectionComponent)
 
 
 OBJ_THRESH: float = 0.5
@@ -429,14 +437,14 @@ class DetectionComponent(Component):
     OBJ_THRESH: ConfigField[float] = ConfigField()
     NMS_THRESH: ConfigField[float] = ConfigField()
 
-    carAccidentModel: CarAccidentModel = None # type: ignore
-    fallDownModel: FallDownModel = None # type: ignore
-    carModel: CarModel = None # type: ignore
-    faceModel: FaceModel = None # type: ignore
-    accumulatedWater: AccumulatedWater = None # type: ignore
+    carAccidentModel: CarAccidentModel = None  # type: ignore
+    fallDownModel: FallDownModel = None  # type: ignore
+    carModel: CarModel = None  # type: ignore
+    faceModel: FaceModel = None  # type: ignore
+    accumulatedWater: AccumulatedWater = None  # type: ignore
 
-    modelMap: dict[str, Model] = {}
     modelList: list[Model] = []
+    modelMap: dict[str, Model] = {}
 
     def __init__(self):
         super().__init__()
@@ -447,13 +455,16 @@ class DetectionComponent(Component):
         self.faceModel = FaceModel(self)
         self.accumulatedWater = AccumulatedWater(self)
 
-        self.modelMap[self.carAccidentModel.name] = self.carAccidentModel
-        self.modelMap[self.fallDownModel.name] = self.fallDownModel
-        self.modelMap[self.carModel.name] = self.carModel
-        self.modelMap[self.faceModel.name] = self.faceModel
-        self.modelMap[self.accumulatedWater.name] = self.accumulatedWater
+        self.modelList = [
+            self.carAccidentModel,
+            self.fallDownModel,
+            self.carModel,
+            self.faceModel,
+            self.accumulatedWater
+        ]
 
-        self.modelList = list(self.modelMap.values())
+        for m in self.modelList:
+            self.modelMap[m.name] = m
 
     async def init(self):
         for name, model in self.modelMap.items():
@@ -465,7 +476,7 @@ class DetectionComponent(Component):
         OBJ_THRESH = self.OBJ_THRESH
         NMS_THRESH = self.NMS_THRESH
 
-    def runDetection(
+    async def runDetection(
             self, inputImage: cv2.typing.MatLike, useModel: Sequence[Model]
     ) -> Result:
 
@@ -486,17 +497,22 @@ class DetectionComponent(Component):
             sizeMap[m.size].append(m)
 
         for size, modelList in sizeMap.items():
-            _inputImage = util.changeSize(inputImage, size)
-            _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
+            # util.changeSize(inputImage, size)
+            _inputImage = await asyncio.get_event_loop().run_in_executor(
+                None, util.changeSize, inputImage, size
+            )
+            # _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
+            _inputImage = await asyncio.get_event_loop().run_in_executor(
+                None, cv2.cvtColor, _inputImage, cv2.COLOR_BGR2RGB)
 
             for m in modelList:
-                cellRes: list[Cell] = m.directRun(_inputImage, originalSize)
+                cellRes: list[Cell] = await m.directRun(_inputImage, originalSize)
                 cellMap[m] = cellRes
-        
+
         res = Result(inputImage, cellMap)
-        
+
         end_time = time.perf_counter()
         duration_ms = (end_time - start_time) * 1000
-        logger.info(f"Detection {useModel} 耗时: {duration_ms:.3f}ms")    
-        
+        logger.info(f"Detection {useModel} 耗时: {duration_ms:.3f}ms")
+
         return res
