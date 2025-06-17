@@ -51,7 +51,7 @@ class CameraComponent(Component):
     cap: cv2.VideoCapture = None  # type: ignore
 
     sustainedDetection = False
-    sustainedDetectionModel: detection.Model = None
+    sustainedDetectionModel: detection.Model | None = None
     sustainedDetectionCondition = asyncio.Condition()
 
     sustainedDetectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
@@ -71,10 +71,11 @@ class CameraComponent(Component):
         if self.enable:
             asyncio.create_task(self.extractAudio())
             asyncio.create_task(self.readFrames())
-            asyncio.create_task(self.)
+            asyncio.create_task(self.commandEventHandle())
 
             if self.enableDetection:
                 asyncio.create_task(self.handleFrames())
+                asyncio.create_task(self.sustainedHandleFrames())
 
             if self.enablePushFrames:
                 asyncio.create_task(self.pushFrames())
@@ -239,7 +240,7 @@ class CameraComponent(Component):
                     res: detection.Result = await self.main.detectionComponent.runDetection(
                         sourceFrame, [self.sustainedDetectionModel]
                     )
-                    await self.detectionKeyframe.publish(res)
+                    await self.sustainedDetectionKeyframe.publish(res)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -247,14 +248,19 @@ class CameraComponent(Component):
                 pass
 
     async def commandEventHandle(self):
-        queue : asyncio.Queue[CommandEvent] = self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=8))
+        queue : asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=8))
         while True:
             try:
                 event : CommandEvent = await queue.get()
                 if event.key == "Detection.Sustained":
-                    self.sustainedDetectionModel = self.main.detectionComponent.modelMap[event.value]
-                    self.sustainedDetection = self.sustainedDetectionModel is not None
-                    self.sustainedDetectionCondition.notify_all()
+                    async with self.sustainedDetectionCondition:
+                        if event.value in self.main.detectionComponent.modelMap:
+                            self.sustainedDetectionModel = self.main.detectionComponent.modelMap[event.value]
+                        else:
+                            self.sustainedDetectionModel = None
+
+                        self.sustainedDetection = self.sustainedDetectionModel is not None
+                        self.sustainedDetectionCondition.notify_all()
             except asyncio.CancelledError:
                 raise
             except Exception as e:
