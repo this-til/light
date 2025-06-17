@@ -210,8 +210,18 @@ class CameraComponent(Component):
 
                     sourceFrame: cv2.typing.MatLike = await framesQueue.get()
                     res: detection.Result = await self.main.detectionComponent.runDetection(
-                        sourceFrame, [self.main.detectionComponent.fallDownModel]
+                        sourceFrame, self.main.detectionComponent.modelList
                     )
+
+                    # Remove standing person results from fall detection
+                    if self.main.detectionComponent.fallDownModel in res.cellMap:
+                        cells = res.cellMap[self.main.detectionComponent.fallDownModel]
+                        filtered_cells = [
+                            cell for cell in cells 
+                            if cell.item != detection.FallDownModel.standPerson
+                        ]
+                        res.cellMap[self.main.detectionComponent.fallDownModel] = filtered_cells
+
                     await self.detectionKeyframe.publish(res)
                     await asyncio.sleep(3)
 
