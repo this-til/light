@@ -194,11 +194,7 @@ class Model:
         return boxes, classes, scores
 
     def box_process(self, position):
-        #grid_h, grid_w = position.shape[2:4]
-        if len(position.shape) == 3:
-            grid_h, grid_w = position.shape[1:3]  # 假设shape为[channels, H, W]
-        else:
-            grid_h, grid_w = position.shape[2:4]
+        grid_h, grid_w = position.shape[2:4]
 
         col, row = np.meshgrid(np.arange(0, grid_w), np.arange(0, grid_h))
         col = col.reshape(1, 1, grid_h, grid_w)
