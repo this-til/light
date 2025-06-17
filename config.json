@@ -53,7 +53,8 @@
     "width": 2560,
     "height": 1440,
     "fps": 25,
-    "cameraRtspUrl": "rtsp://{username}:{password}@{ip}:{rtspPort}/Streaming/Channels/101",
+    "#cameraRtspUrl": "rtsp://{username}:{password}@{ip}:{rtspPort}/Streaming/Channels/101",
+    "cameraRtspUrl": "rtsp://localhost:8554/hik_cam",
     "pushRtspUrl": "rtsp://localhost:8554/stream1"
   },
   "HCNetSdkComponent": {

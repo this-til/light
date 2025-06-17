@@ -82,7 +82,7 @@ class DeviceComponent(Component):
             try:
                 data: bytes = await uartDataQueue.get()
                 strData = data.decode("utf-8").strip()
-                #self.logger.debug(f"read data: {strData}")
+                # self.logger.debug(f"read data: {strData}")
 
                 frames = await asyncio.get_event_loop().run_in_executor(
                     None, util.splitJsonObjects, strData
@@ -108,6 +108,17 @@ class DeviceComponent(Component):
                     if "Data" in decoded:
                         self.deviceValue = decoded["Data"]
                         await self.dataUpdate.publish(copy.deepcopy(self.deviceValue))
+
+                    if "Sensor" in decoded:
+                        _sensor = decoded["Sensor"]
+
+                        self.main.stateComponent.setStates(
+                            {
+                                "wirelessChargingElectricity": _sensor["Light_Electricity"],
+                                "wirelessChargingVoltage": _sensor["Light_Voltage"],
+                                "wirelessChargingPower": _sensor["Light_Power"]
+                            }
+                        )
 
             except asyncio.CancelledError:
                 raise
@@ -143,7 +154,7 @@ class DeviceComponent(Component):
 
             if len(self.commandIdMap) == 0:
                 continue
-            
+
             try:
                 for commandId, command in list(self.commandIdMap.items()):
                     if command.firstTime == 0:

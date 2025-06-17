@@ -236,7 +236,6 @@ class ExclusiveServerReportComponent(Component):
                     {
                         "lightState": state
                         #"lightState": {
-                        #    "enableWirelessCharging": state.enableWirelessCharging,
                         #    "wirelessChargingPower": state.wirelessChargingPower,
                         #}
                     },
