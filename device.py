@@ -139,7 +139,8 @@ class DeviceComponent(Component):
                     pass
 
                 if event.key == "Device.Switch":
-                    self.sendCommand(Command(SetLightSwitch, event.value))
+                    automatic: bool = bool(event.value)
+                    self.sendCommand(Command(SetLightSwitch, 0 if automatic else 1))
                     pass
 
             except asyncio.CancelledError:

@@ -13,7 +13,7 @@ import detection
 import main
 from typing import cast
 from gql import gql, Client
-from gql.transport.exceptions import TransportError , TransportClosed
+from gql.transport.exceptions import TransportError
 from gql.transport.websockets import WebsocketsTransport
 from gql.transport.aiohttp import AIOHTTPTransport
 from websockets import Subprotocol, WebSocketException
@@ -134,7 +134,7 @@ class ExclusiveServerReportComponent(Component):
 
             await util.gracefulShutdown(taskList)
 
-        except (asyncio.CancelledError, TransportClosed):
+        except asyncio.CancelledError:
             raise
         finally:
             await client.close_async()
@@ -206,7 +206,7 @@ class ExclusiveServerReportComponent(Component):
                     },
                 )
             # except (asyncio.CancelledError, TransportError, WebSocketException):
-            except (asyncio.CancelledError, TransportClosed):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
@@ -240,7 +240,7 @@ class ExclusiveServerReportComponent(Component):
                         #}
                     },
                 )
-            except (asyncio.CancelledError, TransportClosed):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
@@ -267,7 +267,7 @@ class ExclusiveServerReportComponent(Component):
                     key = message["key"]
                     value = message["value"]
                     await self.main.configureComponent.setConfigure(key, value)
-            except (asyncio.CancelledError, TransportClosed):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(
@@ -477,7 +477,7 @@ class ExclusiveServerReportComponent(Component):
                     value = message["value"]
                     await self.main.commandComponent.onCommand(key, value)
 
-            except (asyncio.CancelledError, TransportClosed):
+            except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"commandDownEventLoop exception: {str(e)}")
