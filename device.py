@@ -135,7 +135,7 @@ class DeviceComponent(Component):
 
                 event = await queue.get()
                 if event.key == "Device.Gear":
-                    self.sendCommand(Command(SetLightGear, event.value))
+                    self.sendCommand(Command(SetLightGear, int(event.value)))
                     pass
 
                 if event.key == "Device.Switch":
