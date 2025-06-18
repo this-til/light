@@ -136,6 +136,7 @@ class Mian:
         from microphone import MicrophoneComponent
         from state import StateComponent
         from command import CommandComponent
+        from display import DisplayComponent
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
@@ -151,6 +152,7 @@ class Mian:
         self.microphoneComponent = MicrophoneComponent()
         self.stateComponent = StateComponent()
         self.commandComponent = CommandComponent()
+        self.displayComponent = CommandComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
@@ -166,6 +168,7 @@ class Mian:
         self.components.append(self.microphoneComponent)
         self.components.append(self.stateComponent)
         self.components.append(self.commandComponent)
+        self.components.append(self.displayComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
