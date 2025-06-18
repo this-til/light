@@ -112,11 +112,16 @@ class DeviceComponent(Component):
                     if "Sensor" in decoded:
                         _sensor = decoded["Sensor"]
 
-                        self.main.stateComponent.setStates(
+                        await self.main.stateComponent.setStates(
                             {
-                                "wirelessChargingElectricity": _sensor["Light_Electricity"],
-                                "wirelessChargingVoltage": _sensor["Light_Voltage"],
-                                "wirelessChargingPower": _sensor["Light_Power"]
+
+                                "electricity": _sensor["Light_Electricity"],
+                                "voltage": _sensor["Light_Voltage"],
+                                "power": _sensor["Light_Power"],
+
+                                "wirelessChargingElectricity": _sensor["Car_Electricity"],
+                                "wirelessChargingVoltage": _sensor["Car_Voltage"],
+                                "wirelessChargingPower": _sensor["Car_Power"]
                             }
                         )
 
