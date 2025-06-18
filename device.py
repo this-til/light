@@ -8,6 +8,7 @@ import util
 import copy
 
 import main
+from command import CommandEvent
 
 from main import Component, ConfigField
 
@@ -23,6 +24,7 @@ class CommandType:
 
 SetLightGear: CommandType = CommandType("SetLightGear", "uint")
 SetLightSwitch: CommandType = CommandType("LightModeSwitch", "uint")
+RollingDoor: CommandType = CommandType("RollingDoor", "uint")
 
 
 class Command:
@@ -131,14 +133,14 @@ class DeviceComponent(Component):
                 self.logger.exception(f"处理串口数据时发生异常: {str(e)}")
 
     async def detectionChangeLoop(self):
-        queue = await self.main.configureComponent.configureChange.subscribe(
+        queue = await self.main.commandComponent.commandEvent.subscribe(
             asyncio.Queue(maxsize=16)
         )
 
         while True:
             try:
 
-                event = await queue.get()
+                event : CommandEvent = await queue.get()
                 if event.key == "Device.Gear":
                     self.sendCommand(Command(SetLightGear, int(event.value)))
                     pass
@@ -147,6 +149,10 @@ class DeviceComponent(Component):
                     automatic: bool = event.value == "true"
                     self.sendCommand(Command(SetLightSwitch, 0 if automatic else 1))
                     pass
+
+                if event.key == "Device.RollingDoor":
+                    automatic: bool = event.value == "true"
+                    self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
 
             except asyncio.CancelledError:
                 raise
