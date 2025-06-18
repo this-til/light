@@ -9,6 +9,7 @@ import cv2
 import detection
 import hkws_sdk
 import util
+from hkws_sdk import DeviceCommand
 from main import Component, ConfigField
 from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
 from typing import Sequence
@@ -21,6 +22,13 @@ FREQUENCY = 16000  # 采样率16kHz
 SAMPLE_SIZE = -16  # 16位有符号PCM
 CHANNELS = 1  # 单声道
 BUFFER_SIZE = 4096  # 每次读取的数据块大小，须为2的倍数
+
+ptzControlMap: dict[str, hkws_sdk.DeviceCommand] = {
+    "TILT_UP": hkws_sdk.DeviceCommand.TILT_UP,
+    "TILT_DOWN": hkws_sdk.DeviceCommand.TILT_DOWN,
+    "PAN_LEFT": hkws_sdk.DeviceCommand.PAN_LEFT,
+    "PAN_RIGHT": hkws_sdk.DeviceCommand.PAN_RIGHT,
+}
 
 
 class CameraComponent(Component):
@@ -60,13 +68,15 @@ class CameraComponent(Component):
     realHandle: int = -1
     voiceHandle: int = -1
 
+    ptzControlTask: asyncio.Task | None = None
+
     async def init(self):
         self.userId = hkws_sdk.login(
             self.ip, self.sdkPort, self.username, self.password
         )
 
-        self.realHandle = hkws_sdk.realPlay(self.userId)
-        hkws_sdk.ptzControlOther(self.userId, 1, hkws_sdk.DeviceCommand.PAN_LEFT, 0)
+        # self.realHandle = hkws_sdk.realPlay(self.userId)
+        # hkws_sdk.ptzControlOther(self.userId, 1, hkws_sdk.DeviceCommand.PAN_LEFT, 0)
 
         if self.enable:
             asyncio.create_task(self.extractAudio())
@@ -217,7 +227,7 @@ class CameraComponent(Component):
                     if self.main.detectionComponent.fallDownModel in res.cellMap:
                         cells = res.cellMap[self.main.detectionComponent.fallDownModel]
                         filtered_cells = [
-                            cell for cell in cells 
+                            cell for cell in cells
                             if cell.item != detection.FallDownModel.standPerson
                         ]
                         res.cellMap[self.main.detectionComponent.fallDownModel] = filtered_cells
@@ -257,11 +267,22 @@ class CameraComponent(Component):
                 logger.exception(f"处理帧时发生异常: {str(e)}")
                 pass
 
+    async def ptzControl(self, command: hkws_sdk.DeviceCommand):
+        try:
+            hkws_sdk.ptzControlOther(self.userId, 1, command, 0)
+            await asyncio.sleep(1)
+        finally:
+            hkws_sdk.ptzControlOther(self.userId, 1, command, 1)
+            self.ptzControlTask = None
+
+        pass
+
     async def commandEventHandle(self):
-        queue : asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=8))
+        queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(
+            asyncio.Queue(maxsize=8))
         while True:
             try:
-                event : CommandEvent = await queue.get()
+                event: CommandEvent = await queue.get()
                 if event.key == "Detection.Sustained":
                     async with self.sustainedDetectionCondition:
                         if event.value in self.main.detectionComponent.modelMap:
@@ -271,6 +292,20 @@ class CameraComponent(Component):
 
                         self.sustainedDetection = self.sustainedDetectionModel is not None
                         self.sustainedDetectionCondition.notify_all()
+
+                if event.key == "Camera.PtzControl":
+                    if event.value not in ptzControlMap:
+                        continue
+
+                    deviceCommand : DeviceCommand = ptzControlMap[event.value]
+
+                    if self.ptzControlTask is not None:
+                        self.ptzControlTask.cancel()
+                        self.ptzControlTask = None
+
+                    self.ptzControlTask = asyncio.create_task(self.ptzControl(deviceCommand))
+
+
             except asyncio.CancelledError:
                 raise
             except Exception as e:
