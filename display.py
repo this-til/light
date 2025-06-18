@@ -81,7 +81,8 @@ class DisplayComponent(Component):
         while True:
             try:
 
-                self.open_url_fullscreen(self.targetUrl)
+                # self.open_url_fullscreen(self.targetUrl)
+                await asyncio.get_event_loop().run_in_executor(None, self.open_url_fullscreen, self.targetUrl)
 
                 await asyncio.sleep(10)
 
