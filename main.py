@@ -152,7 +152,7 @@ class Mian:
         self.microphoneComponent = MicrophoneComponent()
         self.stateComponent = StateComponent()
         self.commandComponent = CommandComponent()
-        self.displayComponent = CommandComponent()
+        self.displayComponent = DisplayComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
