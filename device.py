@@ -22,7 +22,7 @@ class CommandType:
 
 
 SetLightGear: CommandType = CommandType("SetLightGear", "uint")
-SetLightSwitch: CommandType = CommandType("SetLightSwitch", "uint")
+SetLightSwitch: CommandType = CommandType("LightModeSwitch", "uint")
 
 
 class Command:
