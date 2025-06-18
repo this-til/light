@@ -126,7 +126,7 @@ class DeviceComponent(Component):
                 self.logger.exception(f"处理串口数据时发生异常: {str(e)}")
 
     async def detectionChangeLoop(self):
-        queue = await self.main.configureComponent.commandEvent.subscribe(
+        queue = await self.main.configureComponent.configureChange.subscribe(
             asyncio.Queue(maxsize=16)
         )
 
@@ -139,7 +139,7 @@ class DeviceComponent(Component):
                     pass
 
                 if event.key == "Device.Switch":
-                    automatic: bool = bool(event.value)
+                    automatic: bool = event.value == "true"
                     self.sendCommand(Command(SetLightSwitch, 0 if automatic else 1))
                     pass
 
