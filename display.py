@@ -11,11 +11,13 @@ from urllib.parse import urlparse
 from main import Component, ConfigField
 
 class DisplayComponent(Component):
+    enable : ConfigField[str] = ConfigField()
     targetUrl : ConfigField[str] = ConfigField()
 
     async def init(self):
         await super().init()
-        asyncio.create_task(self.loop())
+        if self.enable:
+            asyncio.create_task(self.loop())
 
     def is_browser_running_with_url(self, url):
         """检查是否有浏览器进程已打开指定URL"""

@@ -85,6 +85,7 @@
     "channels": 0
   },
   "DisplayComponent" : {
+    "enable": false,
     "targetUrl" : "http://192.168.117.120:5174"
   }
 }
