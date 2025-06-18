@@ -83,5 +83,8 @@
     "framesPerBuffer": 2048,
     "rate": 44100,
     "channels": 0
+  },
+  "DisplayComponent" : {
+    "targetUrl" : "http://192.168.117.120:5174"
   }
 }
