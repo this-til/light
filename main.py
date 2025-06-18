@@ -8,7 +8,7 @@ import util
 from typing import Generic, TypeVar
 
 logging.basicConfig(
-   level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
+    level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
 )
 
 logging.config.dictConfig(
@@ -102,6 +102,8 @@ class Component(metaclass=ComponentMeta):
 
 class Mian:
     components: list[Component] = []
+
+    run: bool = True
 
     def __init__(self):
 
@@ -223,6 +225,7 @@ class Mian:
         try:
             await self.serverComponent.runServer()
         finally:
+            self.run = False
             await util.gracefulShutdown()
 
             for component in _components:

@@ -150,13 +150,12 @@ class DeviceComponent(Component):
 
     async def sendCommandLoop(self):
         while True:
-
-            await asyncio.sleep(1)
-
-            if len(self.commandIdMap) == 0:
-                continue
-
             try:
+                await asyncio.sleep(1)
+
+                if len(self.commandIdMap) == 0:
+                    continue
+
                 for commandId, command in list(self.commandIdMap.items()):
                     if command.firstTime == 0:
                         command.firstTime = asyncio.get_event_loop().time()

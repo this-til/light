@@ -209,6 +209,8 @@ class ExclusiveServerReportComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                if not self.main.run:
+                    raise
                 self.logger.exception(f"sensorReportLoop exception: {str(e)}")
                 await asyncio.sleep(5)
 
@@ -235,14 +237,16 @@ class ExclusiveServerReportComponent(Component):
                     self.stateReportGql,
                     {
                         "lightState": state
-                        #"lightState": {
+                        # "lightState": {
                         #    "wirelessChargingPower": state.wirelessChargingPower,
-                        #}
+                        # }
                     },
                 )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                if not self.main.run:
+                    raise
                 self.logger.exception(f"stateReportLoop exception: {str(e)}")
                 await asyncio.sleep(5)
 
@@ -270,6 +274,8 @@ class ExclusiveServerReportComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                if not self.main.run:
+                    raise
                 self.logger.exception(
                     f"configurationDistributionLoop exception: {str(e)}"
                 )
@@ -433,6 +439,8 @@ class ExclusiveServerReportComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                if not self.main.run:
+                    raise
                 self.logger.exception(f"上传关键帧时发生异常: {str(e)}")
                 await asyncio.sleep(5)
 
@@ -480,5 +488,7 @@ class ExclusiveServerReportComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                if not self.main.run:
+                    raise
                 self.logger.exception(f"commandDownEventLoop exception: {str(e)}")
                 await asyncio.sleep(5)
