@@ -47,13 +47,13 @@ class DisplayComponent(Component):
         """打开URL并全屏显示（如果尚未打开）"""
         # 检查浏览器是否已打开该URL
         if self.is_browser_running_with_url(url):
-            print(f"浏览器已打开指定URL: {url}，无需操作")
+            self.logger.info(f"浏览器已打开指定URL: {url}，无需操作")
             return
 
         # 检查是否安装了xdotool
         if not any(os.access(os.path.join(path, "xdotool"), os.X_OK)
                    for path in os.environ["PATH"].split(os.pathsep)):
-            print("未找到xdotool，请先安装：sudo apt install xdotool")
+            self.logger.error("未找到xdotool，请先安装：sudo apt install xdotool")
             return
 
         # 使用默认浏览器打开URL
@@ -72,10 +72,9 @@ class DisplayComponent(Component):
             # 激活窗口并全屏
             subprocess.call(["xdotool", "windowactivate", window_id])
             subprocess.call(["xdotool", "key", "F11"])
-            print("浏览器已全屏显示")
+            self.logger.info("浏览器已全屏显示")
         except Exception as e:
-            print(f"全屏操作失败: {e}")
-            print("请尝试手动按F11全屏")
+            self.logger.exception(f"全屏操作失败: {e}")
 
     async def loop(self):
 
