@@ -23,5 +23,8 @@
     "modelPath": "/home/elf/light/model",
     "OBJ_THRESH": 0.5,
     "NMS_THRESH": 0.5
+  },
+  "MotionComponent": {
+    "speed": 0.5
   }
 }
