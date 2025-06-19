@@ -1,0 +1,227 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "light"
+version = "1.0.0"
+description = "智能监控检测系统 - 基于机器视觉的多功能检测平台"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "开发团队", email = "dev@example.com"},
+]
+maintainers = [
+    {name = "开发团队", email = "dev@example.com"},
+]
+keywords = [
+    "computer-vision",
+    "object-detection", 
+    "surveillance",
+    "monitoring",
+    "rknn",
+    "opencv",
+    "ai"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Security",
+    "Topic :: System :: Monitoring",
+]
+requires-python = ">=3.8"
+dependencies = [
+    # 核心依赖
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "asyncio-mqtt>=0.16.0",
+    
+    # 网络和通信
+    "quart>=0.19.0",
+    "quart-cors>=0.7.0",
+    "hypercorn>=0.14.0",
+    "websockets>=11.0",
+    "aiohttp>=3.8.0",
+    "paho-mqtt>=1.6.0",
+    
+    # GraphQL 和数据处理
+    "gql[all]>=3.4.0",
+    "backoff>=2.2.0",
+    
+    # 音频处理
+    "pyaudio>=0.2.11",
+    
+    # 串口通信
+    "pyserial>=3.5",
+    "pyserial-asyncio>=0.6",
+    
+    # 系统监控
+    "psutil>=5.9.0",
+    
+    # 奥比中光相机支持
+    "pyorbbecsdk>=1.5.0",
+    
+    # 瑞芯微NPU支持（特定硬件）
+    "rknn-toolkit2>=1.6.0; platform_machine == 'aarch64'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.3.0",
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "coverage>=7.2.0",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/example/light"
+Documentation = "https://light.readthedocs.io"
+Repository = "https://github.com/example/light.git"
+"Bug Tracker" = "https://github.com/example/light/issues"
+
+[project.scripts]
+light = "main:main"
+
+[tool.setuptools]
+packages = ["light"]
+
+[tool.setuptools.package-dir]
+light = "."
+
+[tool.setuptools.package-data]
+light = [
+    "*.json",
+    "model/*.rknn",
+    "model/*.onnx",
+    "app/**/*",
+]
+
+# 代码格式化工具配置
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # 排除的目录
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | __pycache__
+  | model
+)/
+'''
+
+# 导入排序工具配置
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["light"]
+known_third_party = [
+    "cv2",
+    "numpy",
+    "asyncio",
+    "quart",
+    "gql",
+    "paho",
+    "pyaudio",
+    "serial",
+    "psutil",
+    "pyorbbecsdk",
+    "rknn",
+]
+
+# 类型检查配置
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cv2.*",
+    "rknn.*",
+    "pyorbbecsdk.*",
+    "pyaudio.*",
+    "serial.*",
+]
+ignore_missing_imports = true
+
+# pytest 配置
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: 标记为慢速测试",
+    "integration: 集成测试",
+    "unit: 单元测试",
+    "hardware: 需要硬件设备的测试",
+]
+
+# coverage 配置
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "setup.py",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "model/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+] 
