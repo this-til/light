@@ -39,30 +39,17 @@ class ExclusiveServerReportComponent(Component):
     pingInterval: ConfigField[int] = ConfigField()
     subprotocol: ConfigField[str] = ConfigField()
 
-    dataUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
     stateUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
     detectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
     sustainedDetectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
 
-    commandDownEventGql = gql(
-        """
-        subscription commandDownEvent {
-            commandDownEvent {
-                key
-                value
-            }
-        }
-        """
-    )
-
     async def init(self):
         if self.enable:
-            await self.main.deviceComponent.dataUpdate.subscribe(self.dataUpdateQueue)
             await self.main.stateComponent.stateChange.subscribe(self.stateUpdateQueue)
-            await self.main.cameraComponent.detectionKeyframe.subscribe(
+            await self.main.orbbecCameraComponent.detectionKeyframe.subscribe(
                 self.detectionKeyframeQueue
             )
-            await  self.main.cameraComponent.sustainedDetectionKeyframe.subscribe(
+            await  self.main.orbbecCameraComponent.sustainedDetectionKeyframe.subscribe(
                 self.sustainedDetectionKeyframeQueue
             )
 
@@ -78,27 +65,13 @@ class ExclusiveServerReportComponent(Component):
                 "username": self.username,
                 "password": self.password,
                 "linkType": "DEVICE_WEBSOCKET",
-                "deviceType": "LIGHT",
+                "deviceType": "CAR",
                 "deviceName": self.localName,
             },
             keep_alive_timeout=self.timeout,
             ping_interval=self.pingInterval,
             subprotocols=[cast(Subprotocol, self.subprotocol)],
         )
-
-    # def publishTask(self, tasks: list[asyncio.Task], session: AsyncClientSession):
-
-    #    task = tasks[0]
-    #    if task is None or task.done():
-    #        tasks[0] = asyncio.create_task(self.sensorReportLoop(session))
-    #    task = tasks[1]
-    #    if task is None or task.done():
-    #        tasks[1] = asyncio.create_task(self.stateReportLoop(session))
-    #    task = tasks[2]
-    #    if task is None or task.done():
-    #        tasks[2] = asyncio.create_task(self.configurationDistributionLoop(session))
-
-    #    pass
 
     async def webSocketTransportLoop(self):
         ws = self.establishLink()
@@ -121,7 +94,6 @@ class ExclusiveServerReportComponent(Component):
             )
 
             taskList = [
-                asyncio.create_task(self.sensorReportLoop(session)),
                 asyncio.create_task(self.stateReportLoop(session)),
                 asyncio.create_task(self.configurationDistributionLoop(session)),
                 asyncio.create_task(self.sustainedDetectionReportLoop(session)),
@@ -169,57 +141,12 @@ class ExclusiveServerReportComponent(Component):
     #                self.logger.exception(f"Websocket Client 发生异常: {str(e)}")
     #                await asyncio.sleep(5)
 
-    sensorReportGql = gql(
-        """
-        mutation reportUpdate($lightDataInput : LightDataInput!) {
-            deviceSelf {
-                asLight {
-                    reportUpdate (lightDataInput: $lightDataInput) {
-                        resultType
-                    }
-                }
-            }
-        }
-        """
-    )
-
-    async def sensorReportLoop(self, session: AsyncClientSession):
-        while True:
-            try:
-                data = await self.dataUpdateQueue.get()
-                modbus = data["Modbus"]
-                weather = modbus["Weather"]
-                windSpeed = modbus["Wind_Speed"]
-
-                await session.execute(
-                    self.sensorReportGql,
-                    {
-                        "lightDataInput": {
-                            "humidity": weather["Humidity"],
-                            "temperature": weather["Temperature"],
-                            "pm10": weather["PM10"],
-                            "pm2_5": weather["PM2.5"],
-                            "illumination": weather["Illuminance"],
-                            "windSpeed": windSpeed["Wind_Speed"],
-                            "windDirection": windSpeed["Wind_Direction"],
-                        }
-                    },
-                )
-            # except (asyncio.CancelledError, TransportError, WebSocketException):
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                if not self.main.run:
-                    raise
-                self.logger.exception(f"sensorReportLoop exception: {str(e)}")
-                await asyncio.sleep(5)
-
     stateReportGql = gql(
         """
-        mutation reportState($lightState : LightStateInput){
+        mutation reportState($carState : CarStateInput){
           deviceSelf {
-            asLight {
-              reportState(lightState : $lightState) {
+            asCar {
+              reportState(carState : $carState) {
                 resultType
               }
             }
@@ -236,9 +163,9 @@ class ExclusiveServerReportComponent(Component):
                 await session.execute(
                     self.stateReportGql,
                     {
-                        "lightState": state
-                        # "lightState": {
-                        #    "wirelessChargingPower": state.wirelessChargingPower,
+                        "carState": state
+                        # "carState": {
+                        #    "TODO": state.TODO,  # 根据schema，CarStateInput目前只有TODO字段
                         # }
                     },
                 )
@@ -470,6 +397,17 @@ class ExclusiveServerReportComponent(Component):
             except Exception as e:
                 self.logger.exception(f"sustainedDetectionReportLoop exception: {str(e)}")
                 await asyncio.sleep(5)
+
+    commandDownEventGql = gql(
+        """
+        subscription commandDownEvent {
+            commandDownEvent {
+                key
+                value
+            }
+        }
+        """
+    )
 
     async def commandDownEventLoop(self, session: AsyncClientSession):
         """Handle incoming command down events"""

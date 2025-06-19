@@ -2,10 +2,9 @@
 
 import cv2
 import asyncio
-import logging
-import numpy as np
 import util
 import detection
+from command import CommandEvent
 from util import Broadcaster, FFmpegPushFrame
 from pyorbbecsdk import *
 from main import Component, ConfigField
@@ -24,15 +23,20 @@ class OrbbecCameraComponent(Component):
     config: Config | None = None
     pipeline: Pipeline | None = None
 
+    sustainedDetection = False
+    sustainedDetectionModel: detection.Model | None = None
+    sustainedDetectionCondition = asyncio.Condition()
+
     source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
-    identifyKeyframe: Broadcaster[detection.Result] = Broadcaster()
+    detectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
+    sustainedDetectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
     async def init(self):
         await super().init()
         if self.enable:
             asyncio.create_task(self.readImageLoop())
-            #asyncio.create_task(self.handleFrames())
-            
+            # asyncio.create_task(self.handleFrames())
+
             if self.enablePushFrames:
                 asyncio.create_task(self.pushFrames())
 
@@ -88,7 +92,7 @@ class OrbbecCameraComponent(Component):
                     await self.source.publish(color_image)
 
                     pass
-                
+
             except asyncio.CancelledError:
                 if self.pipeline is not None:
                     self.pipeline.stop()
@@ -101,26 +105,86 @@ class OrbbecCameraComponent(Component):
                 await asyncio.sleep(5)
             pass
 
-#    async def handleFrames(self):
-#
-#        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
-#            asyncio.Queue(maxsize=1)
-#        )
-#
-#        while True:
-#            try:
-#               frame = await framesQueue.get()
-#
-#               await asyncio.get_event_loop().run_in_executor(
-#                   None, self.main.detectionComponent.runDetection, frame, [self.main.detectionComponent.faceModel]
-#               )
-#
-#               await asyncio.sleep(3)
-#            except asyncio.CancelledError:
-#                raise
-#            except Exception as e:
-#                self.logger.exception(f"处理帧时发生异常: {str(e)}")
-#            pass
+    async def handleFrames(self):
+        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+            asyncio.Queue(maxsize=1)
+        )
+
+        while True:
+            try:
+                async with self.sustainedDetectionCondition:
+                    while self.sustainedDetection:
+                        await self.sustainedDetectionCondition.wait()
+
+                    sourceFrame: cv2.typing.MatLike = await framesQueue.get()
+                    res: detection.Result = await self.main.detectionComponent.runDetection(
+                        sourceFrame, self.main.detectionComponent.modelList
+                    )
+
+                    # Remove standing person results from fall detection
+                    if self.main.detectionComponent.fallDownModel in res.cellMap:
+                        cells = res.cellMap[self.main.detectionComponent.fallDownModel]
+                        filtered_cells = [
+                            cell for cell in cells
+                            if cell.item != detection.FallDownModel.standPerson
+                        ]
+                        res.cellMap[self.main.detectionComponent.fallDownModel] = filtered_cells
+
+                    await self.detectionKeyframe.publish(res)
+                    await asyncio.sleep(3)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"处理帧时发生异常: {str(e)}")
+                pass
+
+    async def sustainedHandleFrames(self):
+        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+            asyncio.Queue(maxsize=1)
+        )
+
+        while True:
+            try:
+                async with self.sustainedDetectionCondition:
+                    while not self.sustainedDetection:
+                        await self.sustainedDetectionCondition.wait()
+
+                    sourceFrame: cv2.typing.MatLike = await framesQueue.get()
+
+                    if self.sustainedDetectionModel is None:
+                        continue
+
+                    res: detection.Result = await self.main.detectionComponent.runDetection(
+                        sourceFrame, [self.sustainedDetectionModel]
+                    )
+                    await self.sustainedDetectionKeyframe.publish(res)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"处理帧时发生异常: {str(e)}")
+                pass
+
+    async def commandEventHandle(self):
+        queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(
+            asyncio.Queue(maxsize=8))
+        while True:
+            try:
+                event: CommandEvent = await queue.get()
+                if event.key == "Detection.Sustained":
+                    async with self.sustainedDetectionCondition:
+                        if event.value in self.main.detectionComponent.modelMap:
+                            self.sustainedDetectionModel = self.main.detectionComponent.modelMap[event.value]
+                        else:
+                            self.sustainedDetectionModel = None
+
+                        self.sustainedDetection = self.sustainedDetectionModel is not None
+                        self.sustainedDetectionCondition.notify_all()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"处理命令时发生异常: {str(e)}")
+                pass
 
     async def pushFrames(self):
         await FFmpegPushFrame(
@@ -132,4 +196,3 @@ class OrbbecCameraComponent(Component):
             __name__,
         ).loop()
         pass
-      

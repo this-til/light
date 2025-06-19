@@ -124,52 +124,25 @@ class Mian:
     async def main(self):
 
         from configure import ConfigureComponent
-        from uart import UartComponent
-        from camera import CameraComponent
         from orbbec_camera import OrbbecCameraComponent
         from detection import DetectionComponent
-        from audio import AudioComponent
-        from device import DeviceComponent
-        from mqtt_report import MqttReportComponent
         from report import ExclusiveServerReportComponent
-        from hkws_sdk import HCNetSdkComponent
-        from server import ServerComponent
-        from microphone import MicrophoneComponent
         from state import StateComponent
         from command import CommandComponent
-        from display import DisplayComponent
 
         self.configureComponent = ConfigureComponent()
-        self.uartComponent = UartComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
-        self.deviceComponent = DeviceComponent()
-        self.mqttReportComponent = MqttReportComponent()
         self.exclusiveServerReportComponent = ExclusiveServerReportComponent()
         self.detectionComponent = DetectionComponent()
-        self.cameraComponent = CameraComponent()
-        self.hkwsSdkComponent = HCNetSdkComponent()
-        self.audioComponent = AudioComponent()
-        self.serverComponent = ServerComponent()
-        self.microphoneComponent = MicrophoneComponent()
         self.stateComponent = StateComponent()
         self.commandComponent = CommandComponent()
-        self.displayComponent = DisplayComponent()
 
         self.components.append(self.configureComponent)
-        self.components.append(self.uartComponent)
         self.components.append(self.orbbecCameraComponent)
-        self.components.append(self.deviceComponent)
-        self.components.append(self.mqttReportComponent)
         self.components.append(self.exclusiveServerReportComponent)
         self.components.append(self.detectionComponent)
-        self.components.append(self.hkwsSdkComponent)
-        self.components.append(self.cameraComponent)
-        self.components.append(self.audioComponent)
-        self.components.append(self.serverComponent)
-        self.components.append(self.microphoneComponent)
         self.components.append(self.stateComponent)
         self.components.append(self.commandComponent)
-        self.components.append(self.displayComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
