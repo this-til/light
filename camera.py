@@ -15,8 +15,6 @@ from util import Broadcaster, FFmpegPushFrame, ByteFFmpegPull
 from typing import Sequence
 from command import CommandEvent
 
-logger = logging.getLogger(__name__)
-
 # 音频参数
 FREQUENCY = 16000  # 采样率16kHz
 SAMPLE_SIZE = -16  # 16位有符号PCM
@@ -109,7 +107,7 @@ class CameraComponent(Component):
 
             try:
 
-                logger.info("尝试连接摄像头...")
+                self.logger.info("尝试连接摄像头...")
 
                 # gst_pipeline = f"rtspsrc location={pushRtspUrl} latency=0 ! rtph264depay ! h264parse ! nvh264dec ! videoconvert ! appsink"
                 # cap = await asyncio.get_event_loop().run_in_executor(None, cv2.VideoCapture, gst_pipeline, cv2.CAP_GSTREAMER)
@@ -119,7 +117,7 @@ class CameraComponent(Component):
                 )
 
                 if not self.cap.isOpened():
-                    logger.warning("连接失败，5秒后重试...")
+                    self.logger.warning("连接失败，5秒后重试...")
                     await asyncio.sleep(5)
                     continue
 
@@ -132,7 +130,7 @@ class CameraComponent(Component):
                     )
 
                     if not ret:
-                        logger.error("读取帧失败，释放资源并重连...")
+                        self.logger.error("读取帧失败，释放资源并重连...")
                         raise Exception("读取帧失败...")
 
                     h, w = frame.shape[:2]
@@ -144,14 +142,14 @@ class CameraComponent(Component):
                     await self.source.publish(frame)
 
             except asyncio.CancelledError:
-                logger.info("任务被取消，执行清理...")
+                self.logger.info("任务被取消，执行清理...")
                 await self.releaseCap()
                 raise
 
             except Exception as e:
-                logger.exception(f"发生未处理异常:  {str(e)}")
+                self.logger.exception(f"发生未处理异常:  {str(e)}")
                 await self.releaseCap()
-                logger.info("5秒后尝试重新连接摄像头...")
+                self.logger.info("5秒后尝试重新连接摄像头...")
                 await asyncio.sleep(5)
 
             pass
@@ -238,7 +236,7 @@ class CameraComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.exception(f"处理帧时发生异常: {str(e)}")
+                self.logger.exception(f"处理帧时发生异常: {str(e)}")
                 pass
 
     async def sustainedHandleFrames(self):
@@ -264,7 +262,7 @@ class CameraComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.exception(f"处理帧时发生异常: {str(e)}")
+                self.logger.exception(f"处理帧时发生异常: {str(e)}")
                 pass
 
     async def ptzControl(self, command: hkws_sdk.DeviceCommand):
@@ -309,7 +307,7 @@ class CameraComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.exception(f"处理命令时发生异常: {str(e)}")
+                self.logger.exception(f"处理命令时发生异常: {str(e)}")
                 pass
         pass
 

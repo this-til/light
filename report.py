@@ -291,10 +291,8 @@ class ExclusiveServerReportComponent(Component):
         mutation ($detectionInput : DetectionInput!, $lightName : String!){
           self {
             getDeviceByName(name : $lightName, deviceType: LIGHT) {
-              asLight {
-                reportDetection(detectionInput : $detectionInput) {
-                  resultType
-                }
+              reportDetection(detectionInput : $detectionInput) {
+                resultType
               }
             }
           }
@@ -448,10 +446,8 @@ class ExclusiveServerReportComponent(Component):
         """
         mutation sustainedReportDetection($items: [DetectionItemInput!]!) {
             deviceSelf {
-                asLight {
-                    sustainedReportDetection(items: $items) {
-                        resultType
-                    }
+                sustainedReportDetection(items: $items) {
+                    resultType
                 }
             }
         }
