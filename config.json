@@ -19,7 +19,7 @@
     "pushRtspUrl": "rtsp://localhost:8554/orbbec_cam"
   },
   "DetectionComponent": {
-    "modelPath": "/home/elf/light/model",
+    "modelPath": "/home/cat/catkin_ws/src/roscar_pkg/scripts/car/model",
     "OBJ_THRESH": 0.5,
     "NMS_THRESH": 0.5
   },
