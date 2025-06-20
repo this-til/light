@@ -1,13 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-import logging
-import json
 import util
-
-import paho.mqtt.client as mqtt
-
-from main import Component, ConfigField
+from main import Component
 
 
 class CommandEvent:

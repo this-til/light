@@ -1,14 +1,14 @@
 #!/usr/bin/python3False
 from __future__ import annotations
 
+import asyncio
 import logging
 import logging.config
-import asyncio
+from typing import Generic, TypeVar
+
 import rospy
 
 import util
-
-from typing import Generic, TypeVar
 
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
