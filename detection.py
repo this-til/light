@@ -86,7 +86,7 @@ class Model:
         logger.info(f"load rknn model: {self.path}")
 
         ret = self.rknn.init_runtime(
-            target="rk3588", fallback_prior_device="gpu", core_mask=RKNN.NPU_CORE_ALL
+            target="rk3588", fallback_prior_device="gpu", core_mask=RKNN.NPU_CORE_AUTO
         )
 
         if ret != 0:

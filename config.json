@@ -13,6 +13,8 @@
   "OrbbecCameraComponent": {
     "enable": true,
     "enablePushFrames": true,
+    "useRosFrames": true,
+    "renderFrames": true,
     "width": 640,
     "height": 480,
     "fps": 30,
