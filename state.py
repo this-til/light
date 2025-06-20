@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import asyncio
-import logging
-import json
-import util
 import copy  # 添加拷贝模块
 
-import paho.mqtt.client as mqtt
+import util
+from main import Component
 
-from main import Component, ConfigField
 
 class StateComponent(Component):
     stateValue: dict[str, object] = {}

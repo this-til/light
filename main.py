@@ -172,7 +172,6 @@ class Mian:
                 await asyncio.sleep(5)
         finally:
             self.run = False
-            monitor.stop_monitoring()
             await util.gracefulShutdown()
 
             for component in _components:

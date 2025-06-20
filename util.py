@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import json
-from typing import *
-from ctypes import Structure
+import platform
 import re
+from ctypes import Structure
+from typing import *
+
 import cv2
 import numpy as np
-import platform
-
 from pyorbbecsdk import FormatConvertFilter, VideoFrame, OBFormat, OBConvertFormat
 
 systemPlatFrom = platform.system()

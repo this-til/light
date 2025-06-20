@@ -1,29 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import json
-import util
-import backoff
+import logging
 from io import BytesIO
-
-import cv2
-import paho.mqtt.client as mqtt
-from gql.client import AsyncClientSession
-
-import detection
-import main
 from typing import cast
-from gql import gql, Client
-from gql.transport.exceptions import TransportError
-from gql.transport.websockets import WebsocketsTransport
-from gql.transport.aiohttp import AIOHTTPTransport
-from websockets import Subprotocol, WebSocketException
-
-from main import Component, ConfigField
-from util import Box
 
 import aiohttp
+import backoff
+import cv2
+from gql import gql, Client
+from gql.client import AsyncClientSession
+from gql.transport.websockets import WebsocketsTransport
+from websockets import Subprotocol
+
+import detection
+import util
+from main import Component, ConfigField
+from util import Box
 
 logger = logging.getLogger(__name__)
 

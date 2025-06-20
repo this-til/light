@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 
-from main import Component, ConfigField
-import rospy
-
 import actionlib
+import rospy
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+
+from main import Component
 
 
 class ActionComponent(Component):
