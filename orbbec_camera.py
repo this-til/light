@@ -223,16 +223,17 @@ class OrbbecCameraComponent(Component):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
             asyncio.Queue(maxsize=1)
         )
+
+        def imshow(name, mat, waitKey):
+            cv2.imshow(name, mat)
+            cv2.waitKey(3)
+
         while True:
             try:
                 mat = await framesQueue.get()
                 # cv2.imshow("Camera View", mat)
                 await asyncio.get_event_loop().run_in_executor(
-                    None, cv2.imshow, "Camera View", mat
-                )
-                # cv2.waitKey(3)
-                await asyncio.get_event_loop().run_in_executor(
-                    None, cv2.waitKey, 3
+                    None, imshow, "Camera View", mat, 3
                 )
             except asyncio.CancelledError:
                 raise
