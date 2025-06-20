@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
+import time
+from typing import Sequence
+
 import cv2
 import numpy as np
-import util
-import threading
-import time
-from util import Box, Color
-
 from rknn.api import RKNN
-from typing import Sequence
+
+import util
 from main import Component, ConfigField
+from util import Box, Color
 
 logger: logging.Logger = logging.getLogger(__name__)
 

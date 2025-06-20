@@ -1,14 +1,16 @@
 #!/usr/bin/python3
 from __future__ import annotations
 
-import cv2
 import asyncio
-import util
-import detection
-from command import CommandEvent
-from util import Broadcaster, FFmpegPushFrame
+
+import cv2
 from pyorbbecsdk import *
+
+import detection
+import util
+from command import CommandEvent
 from main import Component, ConfigField
+from util import Broadcaster, FFmpegPushFrame
 
 
 class OrbbecCameraComponent(Component):
