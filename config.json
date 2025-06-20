@@ -3,7 +3,7 @@
     "enable": true,
     "username": "til",
     "password": "114514",
-    "localName": "挂着咸鱼的路灯",
+    "localName": "拖着咸鱼的小车",
     "webSocketUrl": "ws://192.168.117.120:8080/graphql",
     "httpUrl": "http://192.168.117.120:8080/graphql",
     "timeout": 30,
@@ -13,7 +13,6 @@
   "OrbbecCameraComponent": {
     "enable": true,
     "enablePushFrames": true,
-    "url": "rtsp://localhost:8554/stream2",
     "width": 640,
     "height": 480,
     "fps": 30,
@@ -26,5 +25,8 @@
   },
   "MotionComponent": {
     "speed": 0.5
+  },
+  "LaserRadarComponent": {
+    "roscarMappingLaunchPath": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_mapping.launch"
   }
 }

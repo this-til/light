@@ -1,7 +1,10 @@
 #!/usr/bin/python3False
+from __future__ import annotations
+
 import logging
 import logging.config
 import asyncio
+import rospy
 
 import util
 from typing import Generic, TypeVar
@@ -9,30 +12,6 @@ from typing import Generic, TypeVar
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
 )
-
-logging.config.dictConfig(
-    {
-        "version": 1,
-        "loggers": {
-            "websockets.client": {  # 专门针对gql库
-                "level": "WARN",  # 设置日志等级
-                "handlers": ["console"],
-                "propagate": False,  # 阻止传播到根记录器
-            }
-        },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "formatter": "simple",
-                "level": "DEBUG",
-            }
-        },
-        "formatters": {
-            "simple": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"}
-        },
-    }
-)
-
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")  # 定义泛型类型
@@ -106,22 +85,10 @@ class Mian:
 
     def __init__(self):
 
-        # self.configureComponent = None
-        # self.uartComponent = None
-        # self.orbbecCameraComponent = None
-        # self.deviceComponent = None
-        # self.mqttReportComponent = None
-        # self.exclusiveServerReportComponent = None
-        # self.detectionComponent = None
-        # self.cameraComponent = None
-        # self.hkwsSdkComponent = None
-        # self.audioComponent = None
-        # self.serverComponent = None
-        # self.microphoneComponent = None
-
         pass
 
     async def main(self):
+        rospy.init_node("car_python")
 
         from configure import ConfigureComponent
         from orbbec_camera import OrbbecCameraComponent
@@ -129,6 +96,8 @@ class Mian:
         from report import ExclusiveServerReportComponent
         from state import StateComponent
         from command import CommandComponent
+        from laser_radar import LaserRadarComponent
+        from action import ActionComponent
 
         self.configureComponent = ConfigureComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
@@ -136,6 +105,8 @@ class Mian:
         self.detectionComponent = DetectionComponent()
         self.stateComponent = StateComponent()
         self.commandComponent = CommandComponent()
+        self.laserRadarComponent = LaserRadarComponent()
+        self.actionComponent = ActionComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.orbbecCameraComponent)
@@ -143,6 +114,8 @@ class Mian:
         self.components.append(self.detectionComponent)
         self.components.append(self.stateComponent)
         self.components.append(self.commandComponent)
+        self.components.append(self.laserRadarComponent)
+        self.components.append(self.actionComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
@@ -195,7 +168,8 @@ class Mian:
         logger.debug("组件initBack完成")
 
         try:
-            await self.serverComponent.runServer()
+            while self.run:
+                await asyncio.sleep(5)
         finally:
             self.run = False
             monitor.stop_monitoring()
@@ -228,8 +202,6 @@ class Mian:
             await asyncio.sleep(0.1)
 
             logger.debug("组件exitBack完成")
-
-        pass
 
 
 if __name__ == "__main__":

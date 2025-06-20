@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from __future__ import annotations
 
 import cv2
 import asyncio
@@ -14,7 +15,6 @@ class OrbbecCameraComponent(Component):
     enable: ConfigField[bool] = ConfigField()
     enablePushFrames: ConfigField[bool] = ConfigField()
 
-    url: ConfigField[str] = ConfigField()
     width: ConfigField[int] = ConfigField()
     height: ConfigField[int] = ConfigField()
     fps: ConfigField[int] = ConfigField()
