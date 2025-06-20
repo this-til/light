@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import asyncio
 
+import rospy
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 import cv2
 from pyorbbecsdk import *
 
@@ -16,6 +19,8 @@ from util import Broadcaster, FFmpegPushFrame
 class OrbbecCameraComponent(Component):
     enable: ConfigField[bool] = ConfigField()
     enablePushFrames: ConfigField[bool] = ConfigField()
+    useRosFrames: ConfigField[bool] = ConfigField()
+    renderFrames: ConfigField[bool] = ConfigField()
 
     width: ConfigField[int] = ConfigField()
     height: ConfigField[int] = ConfigField()
@@ -32,15 +37,29 @@ class OrbbecCameraComponent(Component):
     source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
     detectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
     sustainedDetectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
+    
+    bridge = CvBridge()
 
     async def init(self):
         await super().init()
         if self.enable:
-            asyncio.create_task(self.readImageLoop())
+            if self.useRosFrames:
+                rospy.Subscriber("/camera/color/image_raw", Image, self.imageCallback)
+            else:
+                asyncio.create_task(self.readImageLoop())
             # asyncio.create_task(self.handleFrames())
+            
+            if self.renderFrames:
 
             if self.enablePushFrames:
                 asyncio.create_task(self.pushFrames())
+    
+    def imageCallback(self, msg):
+        try:
+            mat = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            self.source.publish_nowait(mat)
+        except Exception as e:
+            self.logger.exception(e)
 
     async def readImageLoop(self):
 
@@ -198,3 +217,21 @@ class OrbbecCameraComponent(Component):
             __name__,
         ).loop()
         pass
+    
+    async def renderFrames(self):
+        framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
+            asyncio.Queue(maxsize=1)
+        )
+        while True:
+            try:
+                mat = await framesQueue.get()
+                cv2.imshow("Camera View", mat)
+                cv2.waitKey(3)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"渲染帧时发生异常: {str(e)}")
+                pass
+                
+                
+                
