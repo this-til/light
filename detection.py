@@ -148,7 +148,7 @@ class Model:
 
             return outList
 
-        return await asyncio.get_event_loop().run_in_executor(image_executor, handleRes)
+        return await asyncio.get_event_loop().run_in_executor(None, handleRes)
 
     def post_process(self, input_data):
         boxes, scores, classes_conf = [], [], []
@@ -443,7 +443,6 @@ NMS_THRESH: float = 0.5
 
 
 class DetectionComponent(Component):
-    
     modelPath: ConfigField[str] = ConfigField()
 
     OBJ_THRESH: ConfigField[float] = ConfigField()
@@ -491,13 +490,13 @@ class DetectionComponent(Component):
     async def release(self):
         """清理资源"""
         await super().release()
-        
+
         # 关闭线程池
         if 'rknn_executor' in globals():
             rknn_executor.shutdown(wait=True)
         if 'image_executor' in globals():
             image_executor.shutdown(wait=True)
-            
+
         # 释放RKNN模型
         for model in self.modelList:
             if model.rknn is not None:
