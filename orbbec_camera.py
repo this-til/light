@@ -37,7 +37,7 @@ class OrbbecCameraComponent(Component):
     source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
     detectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
     sustainedDetectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
-    
+
     bridge = CvBridge()
 
     async def init(self):
@@ -48,12 +48,13 @@ class OrbbecCameraComponent(Component):
             else:
                 asyncio.create_task(self.readImageLoop())
             # asyncio.create_task(self.handleFrames())
-            
+
             if self.renderFrames:
+                asyncio.create_task(self.renderFramesLoop())
 
             if self.enablePushFrames:
                 asyncio.create_task(self.pushFrames())
-    
+
     def imageCallback(self, msg):
         try:
             mat = self.bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -217,21 +218,24 @@ class OrbbecCameraComponent(Component):
             __name__,
         ).loop()
         pass
-    
-    async def renderFrames(self):
+
+    async def renderFramesLoop(self):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
             asyncio.Queue(maxsize=1)
         )
         while True:
             try:
                 mat = await framesQueue.get()
-                cv2.imshow("Camera View", mat)
-                cv2.waitKey(3)
+                # cv2.imshow("Camera View", mat)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, cv2.imshow, "Camera View", mat
+                )
+                # cv2.waitKey(3)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, cv2.waitKey, 3
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"渲染帧时发生异常: {str(e)}")
                 pass
-                
-                
-                
