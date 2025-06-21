@@ -52,8 +52,8 @@ class OrbbecCameraComponent(Component):
             if self.renderFrames:
                 asyncio.create_task(self.renderFramesLoop())
 
-            #if self.enablePushFrames:
-            #    asyncio.create_task(self.pushFrames())
+            if self.enablePushFrames:
+                asyncio.create_task(self.pushFrames())
 
     def imageCallback(self, msg):
         try:
