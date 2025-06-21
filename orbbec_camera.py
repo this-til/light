@@ -222,7 +222,7 @@ class OrbbecCameraComponent(Component):
 
     def imshow(self, name, mat, waitKey):
         cv2.imshow(name, mat)
-        cv2.waitKey(3)
+        cv2.waitKey(1)
         self.logger.debug("imshow")
         
     async def renderFramesLoop(self):
@@ -239,6 +239,7 @@ class OrbbecCameraComponent(Component):
                 )
                 #cv2.imshow("Camera View", mat)
                 #cv2.waitKey(0)
+                await asyncio.sleep(0.01)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
