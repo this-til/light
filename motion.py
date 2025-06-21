@@ -24,7 +24,7 @@ class MotionComponent(Component):
 
     async def motionLoop(self):
 
-        queue: asyncio.Queue[CommandEvent] = self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=8))
+        queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=8))
         msg = self.msg
 
         while True:
@@ -39,7 +39,7 @@ class MotionComponent(Component):
 
                     elif command.value == "translationRetreat":
                         # 向后平移
-                        self.msg.linear.x = self.speed
+                        self.msg.linear.x = -self.speed
 
                     elif command.value == "translationLeft":
                         # 左平移
@@ -47,7 +47,7 @@ class MotionComponent(Component):
 
                     elif command.value == "translationRight":
                         # 右平移
-                        self.msg.linear.y = self.speed
+                        self.msg.linear.y = -self.speed
 
                     elif command.value == "angularLeft":
                         # 左角速度+
@@ -55,15 +55,19 @@ class MotionComponent(Component):
 
                     elif command.value == "angularRight":
                         # 右角速度+
-                        self.msg.angular.z = self.speed
+                        self.msg.angular.z = -self.speed
 
                     elif command.value == "stop":
                         # 停止
-                        self.msg = Twist()
+                        self.msg.linear.x = 0
+                        self.msg.linear.y = 0
+                        self.msg.angular.z = 0
 
                     # 发布速度消息
                     if self.velPub:
                         self.velPub.publish(msg)
+                        
+                    await asyncio.sleep(0.1)
 
             except asyncio.CancelledError:
                 raise
@@ -74,10 +78,10 @@ class MotionComponent(Component):
         while True:
             try:
                 # 每0.1秒检查一次速度衰减
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.05)
                 
                 # 衰减因子，1秒内衰减到0，每0.1秒衰减10%
-                attenuation_factor = 0.9
+                attenuation_factor = 0.85
                 
                 # 检查是否有速度需要衰减
                 has_velocity = (abs(self.msg.linear.x) > 0.01 or 
@@ -107,4 +111,4 @@ class MotionComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self.logger.exception(f"speedAttenuationLoop 引发异常: {e}")
+                self.logger.exception(f"speedAttenuationLoop 引发异常: {e}")adwd

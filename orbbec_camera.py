@@ -223,7 +223,7 @@ class OrbbecCameraComponent(Component):
     def imshow(self, name, mat, waitKey):
         cv2.imshow(name, mat)
         cv2.waitKey(1)
-        self.logger.debug("imshow")
+        #self.logger.debug("imshow")
         
     async def renderFramesLoop(self):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(

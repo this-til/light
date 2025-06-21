@@ -138,6 +138,8 @@ class Mian:
         from command import CommandComponent
         from laser_radar import LaserRadarComponent
         from action import ActionComponent
+        from motion import MotionComponent
+        from broadcast import BroadcastComponent
 
         self.configureComponent = ConfigureComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
@@ -147,6 +149,8 @@ class Mian:
         self.commandComponent = CommandComponent()
         self.laserRadarComponent = LaserRadarComponent()
         self.actionComponent = ActionComponent()
+        self.motionComponent = MotionComponent()
+        self.broadcastComponent = BroadcastComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.orbbecCameraComponent)
@@ -156,6 +160,8 @@ class Mian:
         self.components.append(self.commandComponent)
         self.components.append(self.laserRadarComponent)
         self.components.append(self.actionComponent)
+        self.components.append(self.motionComponent)
+        self.components.append(self.broadcastComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
