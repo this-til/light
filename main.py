@@ -225,7 +225,6 @@ class Mian:
             await self.serverComponent.runServer()
         finally:
             self.run = False
-            monitor.stop_monitoring()
             await util.gracefulShutdown()
 
             for component in _components:
