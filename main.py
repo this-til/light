@@ -4,12 +4,7 @@ import logging.config
 import asyncio
 
 import util
-from system_monitor import SystemMonitor, setup_crash_handling
-
 from typing import Generic, TypeVar
-
-# 设置崩溃处理
-setup_crash_handling()
 
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
