@@ -4,8 +4,12 @@ import logging.config
 import asyncio
 
 import util
+from system_monitor import SystemMonitor, setup_crash_handling
 
 from typing import Generic, TypeVar
+
+# 设置崩溃处理
+setup_crash_handling()
 
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
@@ -123,6 +127,11 @@ class Mian:
         pass
 
     async def main(self):
+        
+        # 启动系统监控
+        monitor = SystemMonitor(interval=30)
+        monitor.start_monitoring()
+        logger.info("系统监控已启动")
 
         from configure import ConfigureComponent
         from uart import UartComponent
@@ -226,6 +235,7 @@ class Mian:
             await self.serverComponent.runServer()
         finally:
             self.run = False
+            monitor.stop_monitoring()
             await util.gracefulShutdown()
 
             for component in _components:

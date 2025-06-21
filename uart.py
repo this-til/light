@@ -3,10 +3,14 @@
 import logging
 import asyncio
 import serial_asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from serial import Serial
 from util import Broadcaster
 from main import Component, ConfigField
+
+# 创建专用的串口线程池
+uart_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="UART")
 
 
 # class UartComponent(Component):
@@ -79,7 +83,7 @@ class UartComponent(Component):
         while True:
             try:
                 data = await asyncio.get_event_loop().run_in_executor(
-                    None, self.uart.read, 4096
+                    uart_executor, self.uart.read, 4096
                 )
 
                 if len(data) == 0:
@@ -95,5 +99,20 @@ class UartComponent(Component):
     def writeAsync(self, data: bytes):
         #self.uart.write(data)
         return asyncio.get_event_loop().run_in_executor(
-            None, self.uart.write, data
+            uart_executor, self.uart.write, data
         )
+    
+    async def release(self):
+        """清理资源"""
+        await super().release()
+        
+        # 关闭串口
+        if self.uart and self.uart.is_open:
+            try:
+                self.uart.close()
+            except Exception as e:
+                self.logger.error(f"Error closing UART: {e}")
+                
+        # 关闭线程池
+        if 'uart_executor' in globals():
+            uart_executor.shutdown(wait=True)

@@ -9,6 +9,7 @@ import util
 import threading
 import time
 from util import Box, Color
+from concurrent.futures import ThreadPoolExecutor
 
 from rknn.api import RKNN
 from typing import Sequence
@@ -17,6 +18,11 @@ from main import Component, ConfigField
 logger: logging.Logger = logging.getLogger(__name__)
 
 inferenceLock = asyncio.Lock()
+
+# 创建专用线程池用于RKNN推理，限制并发数
+rknn_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="RKNN")
+# 创建专用线程池用于图像处理，限制并发数
+image_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="Image")
 
 
 class Item:
@@ -102,9 +108,9 @@ class Model:
         originalSize: tuple[int, int] = (h, w)
 
         # util.changeSize(inputImage, size)
-        inputImage = await asyncio.get_event_loop().run_in_executor(None, util.changeSize, inputImage, self.size)
+        inputImage = await asyncio.get_event_loop().run_in_executor(image_executor, util.changeSize, inputImage, self.size)
         # _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
-        inputImage = await asyncio.get_event_loop().run_in_executor(None, cv2.cvtColor, inputImage, cv2.COLOR_BGR2RGB)
+        inputImage = await asyncio.get_event_loop().run_in_executor(image_executor, cv2.cvtColor, inputImage, cv2.COLOR_BGR2RGB)
 
         return await self.directRun(inputImage, originalSize)
 
@@ -117,12 +123,15 @@ class Model:
         try:
             # res = self.rknn.inference(inputs=[inputImage], data_format="nhwc")
             res = await asyncio.get_event_loop().run_in_executor(
-                None,
+                rknn_executor,
                 lambda: self.rknn.inference(  # 通过lambda捕获参数
                     inputs=[inputImage],
                     data_format="nhwc"
                 )
             )
+        except Exception as e:
+            logger.error(f"RKNN inference failed for model {self.name}: {e}")
+            return []
         finally:
             inferenceLock.release()
 
@@ -138,7 +147,7 @@ class Model:
 
             return outList
 
-        return await asyncio.get_event_loop().run_in_executor(None, handleRes)
+        return await asyncio.get_event_loop().run_in_executor(image_executor, handleRes)
 
     def post_process(self, input_data):
         boxes, scores, classes_conf = [], [], []
@@ -433,6 +442,7 @@ NMS_THRESH: float = 0.5
 
 
 class DetectionComponent(Component):
+    
     modelPath: ConfigField[str] = ConfigField()
 
     OBJ_THRESH: ConfigField[float] = ConfigField()
@@ -476,6 +486,25 @@ class DetectionComponent(Component):
         global OBJ_THRESH, NMS_THRESH
         OBJ_THRESH = self.OBJ_THRESH
         NMS_THRESH = self.NMS_THRESH
+
+    async def release(self):
+        """清理资源"""
+        await super().release()
+        
+        # 关闭线程池
+        if 'rknn_executor' in globals():
+            rknn_executor.shutdown(wait=True)
+        if 'image_executor' in globals():
+            image_executor.shutdown(wait=True)
+            
+        # 释放RKNN模型
+        for model in self.modelList:
+            if model.rknn is not None:
+                try:
+                    model.rknn.release()
+                except Exception as e:
+                    logger.error(f"Failed to release RKNN model {model.name}: {e}")
+                model.rknn = None
 
     async def runDetection(
             self, inputImage: cv2.typing.MatLike, useModel: Sequence[Model]

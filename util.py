@@ -751,14 +751,26 @@ def frame_to_bgr_image(frame: VideoFrame) -> Union[Optional[np.array], Any]:
     data = np.asanyarray(frame.get_data())
     image = np.zeros((height, width, 3), dtype=np.uint8)
     if color_format == OBFormat.RGB:
-        image = np.resize(data, (height, width, 3))
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        try:
+            image = data.reshape((height, width, 3))
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        except ValueError:
+            print(f"RGB reshape failed: data shape {data.shape}, target ({height}, {width}, 3)")
+            return None
     elif color_format == OBFormat.BGR:
-        image = np.resize(data, (height, width, 3))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        try:
+            image = data.reshape((height, width, 3))
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        except ValueError:
+            print(f"BGR reshape failed: data shape {data.shape}, target ({height}, {width}, 3)")
+            return None
     elif color_format == OBFormat.YUYV:
-        image = np.resize(data, (height, width, 2))
-        image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_YUYV)
+        try:
+            image = data.reshape((height, width, 2))
+            image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_YUYV)
+        except ValueError:
+            print(f"YUYV reshape failed: data shape {data.shape}, target ({height}, {width}, 2)")
+            return None
     elif color_format == OBFormat.MJPG:
         image = cv2.imdecode(data, cv2.IMREAD_COLOR)
     elif color_format == OBFormat.I420:
@@ -771,8 +783,12 @@ def frame_to_bgr_image(frame: VideoFrame) -> Union[Optional[np.array], Any]:
         image = nv21_to_bgr(data, width, height)
         return image
     elif color_format == OBFormat.UYVY:
-        image = np.resize(data, (height, width, 2))
-        image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_UYVY)
+        try:
+            image = data.reshape((height, width, 2))
+            image = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_UYVY)
+        except ValueError:
+            print(f"UYVY reshape failed: data shape {data.shape}, target ({height}, {width}, 2)")
+            return None
     else:
         print("Unsupported color format: {}".format(color_format))
         return None
