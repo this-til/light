@@ -52,11 +52,12 @@ class OrbbecCameraComponent(Component):
             if self.renderFrames:
                 asyncio.create_task(self.renderFramesLoop())
 
-            if self.enablePushFrames:
-                asyncio.create_task(self.pushFrames())
+            #if self.enablePushFrames:
+            #    asyncio.create_task(self.pushFrames())
 
     def imageCallback(self, msg):
         try:
+            #self.logger.debug("imageCallback")
             mat = self.bridge.imgmsg_to_cv2(msg, "bgr8")
             self.source.publish_nowait(mat)
         except Exception as e:
@@ -219,24 +220,28 @@ class OrbbecCameraComponent(Component):
         ).loop()
         pass
 
+    def imshow(self, name, mat, waitKey):
+        cv2.imshow(name, mat)
+        cv2.waitKey(3)
+        self.logger.debug("imshow")
+        
     async def renderFramesLoop(self):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
-            asyncio.Queue(maxsize=1)
+            asyncio.Queue(maxsize=4096)
         )
-
-        def imshow(name, mat, waitKey):
-            cv2.imshow(name, mat)
-            cv2.waitKey(3)
 
         while True:
             try:
                 mat = await framesQueue.get()
-                # cv2.imshow("Camera View", mat)
+                #self.logger.debug("renderFramesLoop")
                 await asyncio.get_event_loop().run_in_executor(
-                    None, imshow, "Camera View", mat, 3
+                    None, self.imshow, "Camera View", mat, 3
                 )
+                #cv2.imshow("Camera View", mat)
+                #cv2.waitKey(0)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 self.logger.exception(f"渲染帧时发生异常: {str(e)}")
+                await asyncio.sleep(5)
                 pass

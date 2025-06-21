@@ -7,12 +7,14 @@ import logging.config
 from typing import Generic, TypeVar
 
 import rospy
+import cv2
 
 import util
 
-logging.basicConfig(
+""" logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
-)
+) """
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")  # 定义泛型类型
@@ -21,22 +23,27 @@ class ROSLogHandler(logging.Handler):
     """将 Python logging 重定向到 ROS 日志系统"""
     
     def emit(self, record):
-        # 映射日志级别到 ROS 对应函数
-        log_functions = {
-            logging.DEBUG: rospy.logdebug,
-            logging.INFO: rospy.loginfo,
-            logging.WARNING: rospy.logwarn,
-            logging.ERROR: rospy.logerr,
-            logging.CRITICAL: rospy.logfatal
-        }
+        ## 映射日志级别到 ROS 对应函数
+        #log_functions = {
+        #    logging.DEBUG: rospy.logdebug,
+        #    logging.INFO: rospy.loginfo,
+        #    logging.WARNING: rospy.logwarn,
+        #    logging.ERROR: rospy.logerr,
+        #    logging.CRITICAL: rospy.logfatal
+        #}
+        #
+        ## 获取匹配的 ROS 日志函数（默认使用 logerr）
+        #log_func = log_functions.get(record.levelno, rospy.logerr)
+        #
+        ## 格式化日志消息并发送到 ROS
+        #message = self.format(record)
+        #log_func(message)
         
-        # 获取匹配的 ROS 日志函数（默认使用 logerr）
-        log_func = log_functions.get(record.levelno, rospy.logerr)
+        try:
+            print(self.format(record))
+        except Exception as e:
+            pass
         
-        # 格式化日志消息并发送到 ROS
-        message = self.format(record)
-        log_func(message)
-
 
 class ConfigField(Generic[T]):
     default: T = None  # type: ignore
@@ -109,6 +116,9 @@ class Mian:
         pass
 
     async def main(self):
+    
+        rospy.init_node("car_python")
+        
         handler = ROSLogHandler()
         
         formatter = logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s")
@@ -120,9 +130,7 @@ class Mian:
         log_level = rospy.get_param("~log_level", "DEBUG")
         root_logger.setLevel(log_level)
         
-        
-        rospy.init_node("car_python")
-
+    
         from configure import ConfigureComponent
         from orbbec_camera import OrbbecCameraComponent
         from detection import DetectionComponent
@@ -207,6 +215,9 @@ class Mian:
                 await asyncio.sleep(5)
         finally:
             self.run = False
+            
+            cv2.destroyAllWindows()
+            
             await util.gracefulShutdown()
 
             for component in _components:
