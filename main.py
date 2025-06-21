@@ -127,11 +127,6 @@ class Mian:
         pass
 
     async def main(self):
-        
-        # 启动系统监控
-        monitor = SystemMonitor(interval=30)
-        monitor.start_monitoring()
-        logger.info("系统监控已启动")
 
         from configure import ConfigureComponent
         from uart import UartComponent
