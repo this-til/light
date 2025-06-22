@@ -21,12 +21,14 @@ class AudioComponent(Component):
     async def init(self):
         await super().init()
 
-        pygame.mixer.init(
-            frequency=self.frequency,
-            size=self.size,
-            channels=self.channelNumber,
-            buffer=self.buffer,
-        )
+        #pygame.mixer.init(
+        #    frequency=self.frequency,
+        #    size=self.size,
+        #    channels=self.channelNumber,
+        #    buffer=self.buffer,
+        #)
+
+        pygame.mixer.init()
 
         if pygame.mixer.get_init() is None:
             self.logger.error("Failed to initialize the audio system.")
