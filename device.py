@@ -94,52 +94,55 @@ class DeviceComponent(Component):
 
                     decoded = json.loads(frame)
 
-                    if "Command" in decoded:
-                        load = decoded["Command"]
-                        speakId: int = int(load["SpeakId"])
+                    command_data = decoded.get("Command")
+                    if command_data is not None:
+                        load = command_data
+                        speakId: int = int(load.get("SpeakId", 0))
 
                         if speakId not in self.commandIdMap:
                             continue
 
                         command: Command = self.commandIdMap[speakId]
-                        command.results = load["Execute_Status"]
+                        command.results = load.get("Execute_Status", "FAILED")
                         command.resultsEvent.set()
 
                         self.commandIdMap.pop(speakId)
 
-                    if "Data" in decoded:
-                        self.deviceValue = decoded["Data"]
+                    data_content = decoded.get("Data")
+                    if data_content is not None:
+                        self.deviceValue = data_content
                         await self.dataUpdate.publish(copy.deepcopy(self.deviceValue))
 
-                    if "Sensor" in decoded:
-                        _sensor = decoded["Sensor"]
+                    sensor_data = decoded.get("Sensor")
+                    if sensor_data is not None:
+                        _sensor = sensor_data
 
                         await self.main.stateComponent.setStates(
                             {
 
                                 "selfPower": {
-                                    "electricity": _sensor["Light_Electricity"],
-                                    "voltage": _sensor["Light_Voltage"],
-                                    "power": _sensor["Light_Power"]
+                                    "electricity": _sensor.get("Light_Electricity", 0),
+                                    "voltage": _sensor.get("Light_Voltage", 0),
+                                    "power": _sensor.get("Light_Power", 0)
                                 },
                                 "wirelessChargingPower": {
-                                    "electricity": _sensor["Car_Electricity"],
-                                    "voltage": _sensor["Car_Voltage"],
-                                    "power": _sensor["Car_Power"]
+                                    "electricity": _sensor.get("Car_Electricity", 0),
+                                    "voltage": _sensor.get("Car_Voltage", 0),
+                                    "power": _sensor.get("Car_Power", 0)
                                 },
                                 "uavPower": {
-                                    "electricity": _sensor["Uav_Electricity"],
-                                    "voltage": _sensor["Uav_Voltage"],
-                                    "power": _sensor["Uav_Power"]
+                                    "electricity": _sensor.get("Uav_Electricity", 0),
+                                    "voltage": _sensor.get("Uav_Voltage", 0),
+                                    "power": _sensor.get("Uav_Power", 0)
                                 },
                                 "uavBaseStationPower": {
-                                    "electricity": _sensor["UavBaseStation_Electricity"],
-                                    "voltage": _sensor["UavBaseStation_Voltage"],
-                                    "power": _sensor["UavBaseStation_Power"]
+                                    "electricity": _sensor.get("UavBaseStation_Electricity", 0),
+                                    "voltage": _sensor.get("UavBaseStation_Voltage", 0),
+                                    "power": _sensor.get("UavBaseStation_Power", 0)
                                 },
 
-                                "automaticGear": _sensor["Light_Mode"],
-                                "gear": _sensor["Light_Gear"],
+                                "automaticGear": _sensor.get("Light_Mode", 0),
+                                "gear": _sensor.get("Light_Gear", 0),
                                 "rollingDoorState": "CLOSED"
                             }
                         )
