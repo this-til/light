@@ -32,6 +32,6 @@
     "roscarMappingLaunchPath": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_mapping.launch"
   },
   "BroadcastComponent" : {
-    "soundSource" : "/home/cat/catkin_ws/src/roscar_pkg/sound/"
+    "soundSource" : "/home/cat/catkin_ws/src/roscar_pkg/sound"
   }
 }

@@ -84,7 +84,7 @@ class BroadcastComponent(Component):
             
             # 异步等待播放完成
             while pg.mixer.music.get_busy():
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
                 
             self.logger.info(f"音频播放完成: {fileName}")
             return True
