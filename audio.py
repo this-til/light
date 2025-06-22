@@ -28,8 +28,6 @@ class AudioComponent(Component):
             buffer=self.buffer,
         )
 
-        pygame.mixer.init()
-
         if pygame.mixer.get_init() is None:
             self.logger.error("Failed to initialize the audio system.")
             return
