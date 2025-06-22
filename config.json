@@ -8,13 +8,15 @@
     "httpUrl": "http://192.168.117.120:8080/graphql",
     "timeout": 30,
     "pingInterval": 10,
-    "subprotocol": "graphql-transport-ws"
+    "subprotocol": "graphql-transport-ws",
+
+    "lodgeLight": "挂着咸鱼的路灯"
   },
   "OrbbecCameraComponent": {
     "enable": true,
     "enablePushFrames": true,
     "useRosFrames": true,
-    "renderFrames": false,
+    "renderFrames": true,
     "width": 640,
     "height": 480,
     "fps": 30,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import actionlib
+import cv2
 import rospy
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
@@ -47,8 +48,9 @@ class ActionComponent(Component):
         :return:
         '''
 
-        # TODO 打开卷帘门
-        # TODO 开始建图
+        await self.main.exclusiveServerReportComponent.openRollingDoor()
+
+        self.main.laserRadarComponent.start()
 
         completed: bool = False
 
@@ -59,6 +61,8 @@ class ActionComponent(Component):
 
         if not completed:
             raise Exception("the exitCabin is failed")
+
+        await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
         pass
 
@@ -74,5 +78,20 @@ class ActionComponent(Component):
         在舱门前矫正进入
         :return:
         '''
-        pass
 
+        await self.main.exclusiveServerReportComponent.openRollingDoor()
+
+        queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.source.subscribe(
+            asyncio.Queue(maxsize=1))
+
+        try:
+            mat: cv2.typing.MatLike = await  queue.get()
+
+
+
+        finally:
+            await self.main.orbbecCameraComponent.source.unsubscribe(queue)
+
+        await self.main.exclusiveServerReportComponent.setRollingDoor(False)
+
+        pass

@@ -16,12 +16,10 @@ systemPlatFrom = platform.system()
 
 logger = logging.getLogger(__name__)
 
-
 T = TypeVar("T")  # 定义泛型类型
 
 
 class Box:
-
     x: float = 0
     y: float = 0
     w: float = 0
@@ -41,26 +39,24 @@ class Box:
 
         if width <= 0 or height <= 0:
             raise ValueError("Width and height must be greater than zero.")
-        
+
         return Box(
             x=self.x / width,
             y=self.y / height,
             w=self.w / width,
             h=self.h / height,
         )
-        
+
     pass
 
 
 class Color:
-
     r: int = 0
     g: int = 0
     b: int = 0
     a: int = 0
 
     def __init__(self, r: int, g: int, b: int, a: int = 255):
-
         self.r = r
         self.g = g
         self.b = b
@@ -101,7 +97,6 @@ class Broadcaster(Generic[T]):
 
 
 class EventBroadcaster:
-
     events: list[asyncio.Event] = []
     lock = asyncio.Lock()
 
@@ -131,7 +126,6 @@ class EventBroadcaster:
 
 
 class FFmpeg:
-
     command: list[str]
     process: asyncio.subprocess.Process = None  # type: ignore
 
@@ -199,16 +193,15 @@ class FFmpeg:
 
 
 class ByteFFmpegPull(FFmpeg):
-
     handle: Callable[[bytes], Awaitable]
     size: int
 
     def __init__(
-        self,
-        command: list[str],
-        size: int,
-        handle: Callable[[bytes], Awaitable],
-        logTag: str,
+            self,
+            command: list[str],
+            size: int,
+            handle: Callable[[bytes], Awaitable],
+            logTag: str,
     ):
         super().__init__(command, logTag)
 
@@ -227,17 +220,16 @@ class FFmpegPush(FFmpeg):
     getPushDataLambda: Callable[[], Awaitable[bytes | None]]
 
     def __init__(
-        self,
-        command: list[str],
-        getPushDataLambda: Callable[[], Awaitable[bytes | None]],
-        logTag: str,
+            self,
+            command: list[str],
+            getPushDataLambda: Callable[[], Awaitable[bytes | None]],
+            logTag: str,
     ):
         super().__init__(command, logTag)
         self.getPushDataLambda = getPushDataLambda
         pass
 
     async def operate(self):
-
         data = await self.getPushDataLambda()
 
         if data is None:
@@ -251,7 +243,6 @@ class FFmpegPush(FFmpeg):
 
 
 class FFmpegPushFrame(FFmpegPush):
-
     width: int
     height: int
     fps: int
@@ -259,13 +250,13 @@ class FFmpegPushFrame(FFmpegPush):
     framesQueue: asyncio.Queue[cv2.typing.MatLike]
 
     def __init__(
-        self,
-        width: int,
-        height: int,
-        fps: int,
-        pushRtspUrl: str,
-        framesQueue: asyncio.Queue[cv2.typing.MatLike],
-        logTag: str,
+            self,
+            width: int,
+            height: int,
+            fps: int,
+            pushRtspUrl: str,
+            framesQueue: asyncio.Queue[cv2.typing.MatLike],
+            logTag: str,
     ):
         super().__init__(
             [
@@ -351,9 +342,9 @@ class CircularBuffer:
         second_part = write_len - first_part
 
         # 写入数据
-        self.buffer[self.write_pos : self.write_pos + first_part] = data[:first_part]
+        self.buffer[self.write_pos: self.write_pos + first_part] = data[:first_part]
         if second_part > 0:
-            self.buffer[0:second_part] = data[first_part : first_part + second_part]
+            self.buffer[0:second_part] = data[first_part: first_part + second_part]
 
         self.write_pos = (self.write_pos + write_len) % self.capacity
         self.size += write_len
@@ -371,7 +362,7 @@ class CircularBuffer:
 
         # 构建返回数据
         result = bytearray(size)
-        result[0:first_part] = self.buffer[self.read_pos : self.read_pos + first_part]
+        result[0:first_part] = self.buffer[self.read_pos: self.read_pos + first_part]
         if second_part > 0:
             result[first_part:size] = self.buffer[0:second_part]
 
@@ -393,7 +384,7 @@ def getAllTasks() -> list[asyncio.Task]:
     return [t for t in tasks if t is not current_task]
 
 
-async def gracefulShutdown(tasks : list[asyncio.Task]  | None =  None) -> None:
+async def gracefulShutdown(tasks: list[asyncio.Task] | None = None) -> None:
     """
     优雅关闭所有异步任务
     """
@@ -580,8 +571,9 @@ def splitJsonObjects(json_str):
 
     return objects
 
+
 def changeSize(
-    inputImage: cv2.typing.MatLike, size: tuple[int, int]
+        inputImage: cv2.typing.MatLike, size: tuple[int, int]
 ) -> cv2.typing.MatLike:
     if inputImage is None:
         return None
@@ -611,9 +603,9 @@ def changeSize(
 
 
 def realBox(
-    boxes: list[np.ndarray],
-    originalSize: tuple[float, float],
-    targetSize: tuple[float, float],
+        boxes: list[np.ndarray],
+        originalSize: tuple[float, float],
+        targetSize: tuple[float, float],
 ) -> list[Box]:
     """
     将模型输出的检测框坐标从预处理后的坐标系转换回原始图像坐标系，并封装为Box对象
@@ -688,8 +680,8 @@ def uyvy_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
 
 def i420_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     y = frame[0:height, :]
-    u = frame[height : height + height // 4].reshape(height // 2, width // 2)
-    v = frame[height + height // 4 :].reshape(height // 2, width // 2)
+    u = frame[height: height + height // 4].reshape(height // 2, width // 2)
+    v = frame[height + height // 4:].reshape(height // 2, width // 2)
     yuv_image = cv2.merge([y, u, v])
     bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_I420)
     return bgr_image
@@ -697,7 +689,7 @@ def i420_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
 
 def nv21_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     y = frame[0:height, :]
-    uv = frame[height : height + height // 2].reshape(height // 2, width)
+    uv = frame[height: height + height // 2].reshape(height // 2, width)
     yuv_image = cv2.merge([y, uv])
     bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_NV21)
     return bgr_image
@@ -705,7 +697,7 @@ def nv21_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
 
 def nv12_to_bgr(frame: np.ndarray, width: int, height: int) -> np.ndarray:
     y = frame[0:height, :]
-    uv = frame[height : height + height // 2].reshape(height // 2, width)
+    uv = frame[height: height + height // 2].reshape(height // 2, width)
     yuv_image = cv2.merge([y, uv])
     bgr_image = cv2.cvtColor(yuv_image, cv2.COLOR_YUV2BGR_NV12)
     return bgr_image
@@ -822,10 +814,10 @@ def HexToDecMa(wHex: int) -> int:
     例如：0x1234 -> 1234（整数形式，不是真正的十进制值）
     """
     return (
-        (wHex // 4096) * 1000
-        + ((wHex % 4096) // 256) * 100
-        + ((wHex % 256) // 16) * 10
-        + (wHex % 16)
+            (wHex // 4096) * 1000
+            + ((wHex % 4096) // 256) * 100
+            + ((wHex % 256) // 16) * 10
+            + (wHex % 16)
     )
 
 
@@ -835,8 +827,85 @@ def DEC2HEX_doc(x: int) -> int:
     例如：1234 -> 0x1234（返回整数4660）
     """
     return (
-        (x // 1000) * 4096
-        + ((x % 1000) // 100) * 256
-        + ((x % 100) // 10) * 16
-        + (x % 10)
+            (x // 1000) * 4096
+            + ((x % 1000) // 100) * 256
+            + ((x % 100) // 10) * 16
+            + (x % 10)
     )
+
+
+def findCrosshair(mat: cv2.typing.MatLike) -> (float, float):
+    # 转换为HSV颜色空间（更好识别红色）
+    hsv = cv2.cvtColor(mat, cv2.COLOR_BGR2HSV)
+
+    # 定义红色的HSV范围（两个区间：0°-10° 和 170°-180°）
+    lower_red1 = np.array([0, 100, 100])
+    upper_red1 = np.array([10, 255, 255])
+    lower_red2 = np.array([170, 100, 100])
+    upper_red2 = np.array([180, 255, 255])
+
+    # 创建红色掩膜
+    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+    red_mask = cv2.bitwise_or(mask1, mask2)
+
+    # 形态学操作（去除噪点，连接断裂部分）
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    processed_mask = cv2.morphologyEx(
+        red_mask,
+        cv2.MORPH_CLOSE,  # 闭运算：先膨胀后腐蚀
+        kernel,
+        iterations=3
+    )
+
+    # 查找轮廓
+    contours, _ = cv2.findContours(
+        processed_mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    if not contours:
+        print("No crosshair found")
+        return None
+
+    # 找到最大轮廓（假设十字准星是最大的红色物体）
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    # 计算轮廓的矩并获取中心点
+    M = cv2.moments(largest_contour)
+    if M["m00"] == 0:
+        return None
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+
+    return (cx, cy)
+
+
+def drawCrosshairCenter(img: cv2.typing.MatLike, center: (float, float), size=30, thickness=3):
+    if img is None or center is None:
+        return img
+
+    cx, cy = center
+
+    # 绘制醒目的绿色十字标记
+    color = (0, 255, 0)  # 绿色
+    # 水平线
+    cv2.line(img, (cx - size, cy), (cx + size, cy), color, thickness)
+    # 垂直线
+    cv2.line(img, (cx, cy - size), (cx, cy + size), color, thickness)
+
+    # 绘制外圆
+    cv2.circle(img, center, size // 2, color, thickness)
+
+    # 绘制中心点
+    cv2.circle(img, center, thickness * 2, (0, 0, 255), -1)  # 红色实心点
+
+    # 添加坐标文本
+    coord_text = f"({cx}, {cy})"
+    cv2.putText(img, coord_text, (cx + size + 5, cy),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    cv2.putText(img, coord_text, (cx + size + 5, cy),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 1)
+
+    return img

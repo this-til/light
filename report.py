@@ -19,6 +19,8 @@ import util
 from main import Component, ConfigField
 from util import Box
 
+from enum import Enum
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,9 +37,13 @@ class ExclusiveServerReportComponent(Component):
     pingInterval: ConfigField[int] = ConfigField()
     subprotocol: ConfigField[str] = ConfigField()
 
+    lodgeLight: ConfigField[str] = ConfigField()
+
     stateUpdateQueue: asyncio.Queue[dict] = asyncio.Queue(maxsize=8)
     detectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
     sustainedDetectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
+
+    session: AsyncClientSession = None
 
     async def init(self):
         if self.enable:
@@ -79,7 +85,7 @@ class ExclusiveServerReportComponent(Component):
 
         try:
 
-            session = await client.connect_async(
+            self.session = await client.connect_async(
                 True,
                 retry_execute=False,
                 retry_connect=backoff.on_exception(
@@ -90,10 +96,10 @@ class ExclusiveServerReportComponent(Component):
             )
 
             taskList = [
-                asyncio.create_task(self.stateReportLoop(session)),
-                asyncio.create_task(self.configurationDistributionLoop(session)),
-                asyncio.create_task(self.sustainedDetectionReportLoop(session)),
-                asyncio.create_task(self.commandDownEventLoop(session)),
+                asyncio.create_task(self.stateReportLoop(self.session)),
+                asyncio.create_task(self.configurationDistributionLoop(self.session)),
+                asyncio.create_task(self.sustainedDetectionReportLoop(self.session)),
+                asyncio.create_task(self.commandDownEventLoop(self.session)),
             ]
 
             done, pending = await asyncio.wait(
@@ -422,3 +428,171 @@ class ExclusiveServerReportComponent(Component):
                     raise
                 self.logger.exception(f"commandDownEventLoop exception: {str(e)}")
                 await asyncio.sleep(5)
+
+    lodgeLightStateMonitorGql = gql(
+        """
+        subscription lodgeLightStateMonitor {
+            lightStateReportEvent {
+                rollingDoorState
+            }
+        }
+        """
+    )
+
+    getLightDeviceStateGql = gql(
+        """
+        query getLightDeviceByName($name: String!, $deviceType: DeviceType!) {
+            self {
+                getDeviceByName(name: $name, deviceType: $deviceType) {
+                    online
+                    asLight {
+                        lightState {
+                            rollingDoorState
+                        }
+                    }
+                }
+            }
+        }
+        """
+    )
+
+    async def getLightDeviceState(self) -> LightState | None:
+        """根据设备名称获取 Light 设备信息"""
+        if not self.session:
+            self.logger.error("WebSocket session 未建立")
+            return None
+            
+        result = await self.session.execute(
+            self.getLightDeviceStateGql,
+            {
+                "name": self.lodgeLight,
+                "deviceType": "LIGHT"
+            }
+        )
+
+        device_data = result.get("self", {}).get("getDeviceByName")
+        if not device_data:
+            self.logger.warning(f"未找到设备: {self.lodgeLight}")
+            return None
+
+        online = device_data.get("online", False)
+        
+        # 检查是否有 Light 状态数据
+        as_light = device_data.get("asLight")
+        if not as_light:
+            self.logger.warning(f"设备 {self.lodgeLight} 不是 Light 类型")
+            return LightState(online=online, rollingDoorState=None)
+
+        light_state_data = as_light.get("lightState")
+        rolling_door_state = None
+        
+        if light_state_data and light_state_data.get("rollingDoorState"):
+            rolling_door_state_str = light_state_data["rollingDoorState"]
+            try:
+                rolling_door_state = RollingDoorState(rolling_door_state_str)
+            except ValueError:
+                self.logger.warning(f"未知的卷帘门状态: {rolling_door_state_str}")
+
+        return LightState(online=online, rollingDoorState=rolling_door_state)
+
+    setRollingDoorGql = gql(
+        """
+        mutation setRollingDoor($name: String!, $deviceType: DeviceType!, $open: Boolean!) {
+            self {
+                getDeviceByName(name: $name, deviceType: $deviceType) {
+                    asLight {
+                        setRollingDoor(open: $open) {
+                            resultType
+                            message
+                        }
+                    }
+                }
+            }
+        }
+        """
+    )
+
+    async def setRollingDoor(self, open: bool) -> None:
+        """设置卷帘门开闭状态"""
+        if not self.session:
+            raise RuntimeError("WebSocket session 未建立")
+            
+        result = await self.session.execute(
+            self.setRollingDoorGql,
+            {
+                "name": self.lodgeLight,
+                "deviceType": "LIGHT",
+                "open": open
+            }
+        )
+
+        device_data = result.get("self", {}).get("getDeviceByName")
+        if not device_data:
+            raise ValueError(f"未找到设备: {self.lodgeLight}")
+
+        light_result = device_data.get("asLight", {}).get("setRollingDoor")
+        if not light_result:
+            raise ValueError(f"设备 {self.lodgeLight} 不支持卷帘门操作")
+
+        result_type = light_result.get("resultType")
+        message = light_result.get("message", "")
+        
+        if result_type == "SUCCESSFUL":
+            action = "打开" if open else "关闭"
+            self.logger.info(f"成功{action}设备 {self.lodgeLight} 的卷帘门")
+        else:
+            raise RuntimeError(f"设置卷帘门失败: {result_type} - {message}")
+
+    async def waitForRollingDoorState(self, target_state: RollingDoorState, timeout: int = 30) -> None:
+        """等待卷帘门状态达到目标状态"""
+        start_time = asyncio.get_event_loop().time()
+        
+        while True:
+            current_time = asyncio.get_event_loop().time()
+            if current_time - start_time > timeout:
+                raise TimeoutError(f"等待卷帘门状态变为 {target_state.value} 超时")
+            
+            light_state = await self.getLightDeviceState()
+            if not light_state:
+                raise RuntimeError("无法获取设备状态")
+            
+            if not light_state.online:
+                raise RuntimeError("设备离线")
+            
+            if light_state.rollingDoorState == target_state:
+                self.logger.info(f"卷帘门状态已变为: {target_state.value}")
+                return
+            
+            self.logger.debug(f"当前卷帘门状态: {light_state.rollingDoorState}, 目标状态: {target_state.value}")
+            await asyncio.sleep(1)  # 等待1秒后重新检查
+
+    async def openRollingDoor(self) -> None:
+        """打开卷帘门并等待完成"""
+        await self.setRollingDoor(True)
+        await self.waitForRollingDoorState(RollingDoorState.OPENED)
+
+    async def closeRollingDoor(self) -> None:
+        """关闭卷帘门并等待完成"""
+        await self.setRollingDoor(False)
+        await self.waitForRollingDoorState(RollingDoorState.CLOSED)
+
+
+class RollingDoorState(Enum):
+    OPENED = "OPENED"
+    OPENING = "OPENING"
+    CLOSED = "CLOSED"
+    CLOSING = "CLOSING"
+
+
+class LightState:
+    online: bool
+    rollingDoorState: RollingDoorState | None
+
+    def __init__(self, online: bool, rollingDoorState: RollingDoorState | None):
+        self.online = online
+        self.rollingDoorState = rollingDoorState
+
+    def __str__(self):
+        return f"LightState(online={self.online}, rollingDoorState={self.rollingDoorState})"
+
+    pass

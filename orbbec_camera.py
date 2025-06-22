@@ -221,13 +221,15 @@ class OrbbecCameraComponent(Component):
         pass
 
     def imshow(self, name, mat, waitKey):
+        center = util.findCrosshair(mat)
+        mat = util.drawCrosshairCenter(mat, center)
         cv2.imshow(name, mat)
-        cv2.waitKey(1)
+        cv2.waitKey(waitKey)
         #self.logger.debug("imshow")
         
     async def renderFramesLoop(self):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
-            asyncio.Queue(maxsize=4096)
+            asyncio.Queue(maxsize=16)
         )
 
         while True:
@@ -235,7 +237,7 @@ class OrbbecCameraComponent(Component):
                 mat = await framesQueue.get()
                 #self.logger.debug("renderFramesLoop")
                 await asyncio.get_event_loop().run_in_executor(
-                    None, self.imshow, "Camera View", mat, 3
+                    None, self.imshow, "Camera View", mat, 1
                 )
                 #cv2.imshow("Camera View", mat)
                 #cv2.waitKey(0)
