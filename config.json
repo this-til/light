@@ -75,10 +75,6 @@
   "DeviceComponent": {
     "commandOutTime": 60
   },
-  "Device": {
-    "Gear": 1000,
-    "Switch": 0
-  },
   "MicrophoneComponent": {
     "framesPerBuffer": 2048,
     "rate": 44100,
@@ -87,5 +83,8 @@
   "DisplayComponent" : {
     "enable": false,
     "targetUrl" : "http://192.168.117.120:5174"
+  },
+  "BroadcastComponent" : {
+    "soundSource" :  "/home/elf/light/sound"
   }
 }
