@@ -141,7 +141,7 @@ class DeviceComponent(Component):
                                     "power": _sensor.get("UavBaseStation_Power", 0)
                                 },
 
-                                "automaticGear": _sensor.get("Light_Mode", False),
+                                "automaticGear": _sensor.get("Light_Mode", 0)  == 1,
                                 "gear": _sensor.get("Light_Gear", 0),
                                 "rollingDoorState": "CLOSED"
                             }
