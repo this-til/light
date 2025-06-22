@@ -117,13 +117,30 @@ class DeviceComponent(Component):
                         await self.main.stateComponent.setStates(
                             {
 
-                                "electricity": _sensor["Light_Electricity"],
-                                "voltage": _sensor["Light_Voltage"],
-                                "power": _sensor["Light_Power"],
+                                "selfPower": {
+                                    "electricity": _sensor["Light_Electricity"],
+                                    "voltage": _sensor["Light_Voltage"],
+                                    "power": _sensor["Light_Power"]
+                                },
+                                "wirelessChargingPower": {
+                                    "electricity": _sensor["Car_Electricity"],
+                                    "voltage": _sensor["Car_Voltage"],
+                                    "power": _sensor["Car_Power"]
+                                },
+                                "uavPower": {
+                                    "electricity": _sensor["Uav_Electricity"],
+                                    "voltage": _sensor["Uav_Voltage"],
+                                    "power": _sensor["Uav_Power"]
+                                },
+                                "uavBaseStationPower": {
+                                    "electricity": _sensor["UavBaseStation_Electricity"],
+                                    "voltage": _sensor["UavBaseStation_Voltage"],
+                                    "power": _sensor["UavBaseStation_Power"]
+                                },
 
-                                "wirelessChargingElectricity": _sensor["Car_Electricity"],
-                                "wirelessChargingVoltage": _sensor["Car_Voltage"],
-                                "wirelessChargingPower": _sensor["Car_Power"]
+                                "automaticGear": _sensor["Light_Mode"],
+                                "gear": _sensor["Light_Gear"],
+                                "rollingDoorState": "CLOSED"
                             }
                         )
 
@@ -140,7 +157,7 @@ class DeviceComponent(Component):
         while True:
             try:
 
-                event : CommandEvent = await queue.get()
+                event: CommandEvent = await queue.get()
                 if event.key == "Device.Gear":
                     self.sendCommand(Command(SetLightGear, int(event.value)))
                     pass
