@@ -20,7 +20,7 @@ FREQUENCY = 16000  # 采样率16kHz
 BITRATE = "32k"
 SAMPLE_SIZE = -16  # 16位有符号PCM
 CHANNELS = 1  # 单声道
-BUFFER_SIZE = 4096  # 每次读取的数据块大小，须为2的倍数
+BUFFER_SIZE = 512  # 每次读取的数据块大小，须为2的倍数
 
 ptzControlMap: dict[str, hkws_sdk.DeviceCommand] = {
     "TILT_UP": hkws_sdk.DeviceCommand.TILT_UP,
@@ -157,22 +157,33 @@ class CameraComponent(Component):
 
     async def extractAudio(self):
 
+        # ffmpeg_command = [
+        #    "ffmpeg",
+        #    "-i",
+        #    self.getCameraRtspUrl(),  # 输入RTSP流
+        #    "-vn",  # 忽略视频
+        #    "-acodec",
+        #    "pcm_s16le",  # 输出PCM格式
+        #    "-ar",
+        #    str(FREQUENCY),  # 采样率
+        #    "-b:a",
+        #    BITRATE,
+        #    "-ac",
+        #    str(CHANNELS),  # 声道数
+        #    "-f",
+        #    "s16le",  # 输出格式为s16le
+        #    "-loglevel",
+        #    "quiet",  # 屏蔽FFmpeg日志
+        #    "pipe:1",  # 输出到标准输出
+        # ]
+
         ffmpeg_command = [
-            "ffmpeg",
-            "-i",
-            self.getCameraRtspUrl(),  # 输入RTSP流
-            "-vn",  # 忽略视频
-            "-acodec",
-            "pcm_s16le",  # 输出PCM格式
-            "-ar",
-            str(FREQUENCY),  # 采样率
-            "-b:a",
-            BITRATE,
-            "-ac",
-            str(CHANNELS),  # 声道数
-            "-f",
-            "s16le",  # 输出格式为s16le
-            "-loglevel",
+            'ffmpeg',
+            '-i', self.getCameraRtspUrl(),  # 输入流地址
+            '-acodec', 'pcm_s16le',  # 输出PCM有符号16位小端格式
+            '-ar', str(8000),  # 采样率
+            '-ac', str(1),  # 声道数
+            '-f', 's16le',  # 输出格式
             "quiet",  # 屏蔽FFmpeg日志
             "pipe:1",  # 输出到标准输出
         ]
@@ -298,7 +309,7 @@ class CameraComponent(Component):
                     if event.value not in ptzControlMap:
                         continue
 
-                    deviceCommand : DeviceCommand = ptzControlMap[event.value]
+                    deviceCommand: DeviceCommand = ptzControlMap[event.value]
 
                     if self.ptzControlTask is not None:
                         self.ptzControlTask.cancel()

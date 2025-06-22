@@ -21,14 +21,15 @@ class AudioComponent(Component):
     async def init(self):
         await super().init()
 
-        #pygame.mixer.init(
+        # pygame.mixer.init(
         #    frequency=self.frequency,
         #    size=self.size,
         #    channels=self.channelNumber,
         #    buffer=self.buffer,
-        #)
+        # )
 
-        pygame.mixer.init()
+        # pygame.mixer.init()
+        pygame.mixer.init(frequency=8000, size=-16, channels=1)
 
         if pygame.mixer.get_init() is None:
             self.logger.error("Failed to initialize the audio system.")
@@ -60,7 +61,7 @@ class AudioComponent(Component):
         return 1 << 6
 
     async def playStreamLoop(
-        self, queue: asyncio.Queue[bytes], channel: pygame.mixer.Channel
+            self, queue: asyncio.Queue[bytes], channel: pygame.mixer.Channel
     ):
 
         while True:
@@ -72,7 +73,7 @@ class AudioComponent(Component):
                 channel.stop()
                 raise
             except Exception as e:
-                self.logger.exception(f"音频播放的未知异常:{str(e) }")
+                self.logger.exception(f"音频播放的未知异常:{str(e)}")
 
     def getChannel(self, index: int) -> pygame.mixer.Channel | None:
         if index < 0 or index >= len(self.channels):
