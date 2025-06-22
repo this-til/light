@@ -17,7 +17,7 @@ from command import CommandEvent
 
 # 音频参数
 FREQUENCY = 16000  # 采样率16kHz
-BITRATE = "64k"
+BITRATE = "32k"
 SAMPLE_SIZE = -16  # 16位有符号PCM
 CHANNELS = 1  # 单声道
 BUFFER_SIZE = 16384  # 每次读取的数据块大小，须为2的倍数
