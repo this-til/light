@@ -16,7 +16,7 @@ from typing import Sequence
 from command import CommandEvent
 
 # 音频参数
-FREQUENCY = 16000  # 采样率16kHz
+FREQUENCY = 64000  # 采样率16kHz
 SAMPLE_SIZE = -16  # 16位有符号PCM
 CHANNELS = 1  # 单声道
 BUFFER_SIZE = 4096  # 每次读取的数据块大小，须为2的倍数
