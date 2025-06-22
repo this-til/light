@@ -7,6 +7,7 @@ import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
+import numpy as np
 from pyorbbecsdk import *
 
 import detection
@@ -221,6 +222,7 @@ class OrbbecCameraComponent(Component):
         pass
 
     def imshow(self, name, mat, waitKey):
+        mat = util.brightnessNormalization(mat)
         center = util.findCrosshair(mat)
         mat = util.drawCrosshairCenter(mat, center)
         cv2.imshow(name, mat)
@@ -248,3 +250,5 @@ class OrbbecCameraComponent(Component):
                 self.logger.exception(f"渲染帧时发生异常: {str(e)}")
                 await asyncio.sleep(5)
                 pass
+
+

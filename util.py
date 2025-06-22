@@ -909,3 +909,41 @@ def drawCrosshairCenter(img: cv2.typing.MatLike, center: (float, float), size=30
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 1)
 
     return img
+
+
+def brightnessNormalization(img, target_mean=128):
+    """
+    实现亮度均值化
+
+    参数:
+        img: 输入图像 (BGR格式)
+        target_mean: 目标亮度均值 (0-255之间, 默认为128)
+
+    返回:
+        normalized_img: 亮度均值化后的图像
+    """
+    # 将图像转换为灰度图
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 计算当前图像的亮度均值
+    current_mean = np.mean(gray)
+
+    # 计算缩放因子 (避免除以零)
+    if current_mean == 0:
+        scale = 1.0
+    else:
+        scale = target_mean / current_mean
+
+    # 将图像转换为浮点类型以便进行数学运算
+    img_float = img.astype(np.float32)
+
+    # 应用缩放因子到所有通道
+    normalized_img = img_float * scale
+
+    # 确保像素值在0-255范围内
+    normalized_img = np.clip(normalized_img, 0, 255)
+
+    # 转换回8位无符号整数
+    normalized_img = normalized_img.astype(np.uint8)
+
+    return normalized_img
