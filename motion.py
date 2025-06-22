@@ -111,4 +111,4 @@ class MotionComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self.logger.exception(f"speedAttenuationLoop 引发异常: {e}")adwd
+                self.logger.exception(f"speedAttenuationLoop 引发异常: {e}")
