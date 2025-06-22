@@ -37,7 +37,7 @@ class AudioComponent(Component):
         pygame.mixer.music.set_volume(1)
 
         for i in range(self.channelNumber):
-            queue = asyncio.Queue(maxsize=16)
+            queue = asyncio.Queue(maxsize=64)
             channel = pygame.mixer.Channel(i)
             self.channelPlays.append(queue)
             self.channels.append(channel)

@@ -61,7 +61,7 @@
     "SDKPath": "/home/elf/HCNetSDKV6.1.9.45_build20220902_ArmLinux64_ZH/MakeAll/"
   },
   "AudioComponent": {
-    "frequency": 16000,
+    "frequency": 32000,
     "size": -16,
     "channelNumber": 1,
     "buffer": 4096
