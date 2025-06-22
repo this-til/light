@@ -19,7 +19,7 @@ class BroadcastComponent(Component):
 
     async def awakeInit(self):
         await super().awakeInit()
-        pg.mixer.init()
+        # pg.mixer.init()
 
         # 扫描音频文件并生成表
         await self.scanAudioFiles()

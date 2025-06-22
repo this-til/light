@@ -20,7 +20,7 @@ FREQUENCY = 16000  # 采样率16kHz
 BITRATE = "32k"
 SAMPLE_SIZE = -16  # 16位有符号PCM
 CHANNELS = 1  # 单声道
-BUFFER_SIZE = 16384  # 每次读取的数据块大小，须为2的倍数
+BUFFER_SIZE = 4096  # 每次读取的数据块大小，须为2的倍数
 
 ptzControlMap: dict[str, hkws_sdk.DeviceCommand] = {
     "TILT_UP": hkws_sdk.DeviceCommand.TILT_UP,
