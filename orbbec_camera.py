@@ -85,6 +85,11 @@ class OrbbecCameraComponent(Component):
                         self.logger.warning("failed to convert frame to image")
                         continue
 
+                    #color_image = util.brightnessNormalization(color_image)
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self.config.set_brightness, color_image
+                    )
+
                     await self.source.publish(color_image)
 
                     pass
