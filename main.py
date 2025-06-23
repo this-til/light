@@ -140,6 +140,7 @@ class Mian:
         from action import ActionComponent
         from motion import MotionComponent
         from broadcast import BroadcastComponent
+        from key import KeyComponent
 
         self.configureComponent = ConfigureComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
@@ -151,6 +152,7 @@ class Mian:
         self.actionComponent = ActionComponent()
         self.motionComponent = MotionComponent()
         self.broadcastComponent = BroadcastComponent()
+        self.KeyComponent = KeyComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.orbbecCameraComponent)
@@ -162,6 +164,7 @@ class Mian:
         self.components.append(self.actionComponent)
         self.components.append(self.motionComponent)
         self.components.append(self.broadcastComponent)
+        self.components.append(self.KeyComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
