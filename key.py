@@ -1,69 +1,52 @@
+import sys
+import select
+import tty
+import termios
 import asyncio
-from pynput import keyboard
+import signal
+from collections import deque
+from typing import AsyncGenerator, Callable, Optional
 
 import util
 from main import Component, ConfigField
 
 
-class KeyEventEvent:
-    PRESS = 0
-    RELEASE = 1
-    pass
-
-
 class KeyEvent:
-    keyEventEvent: KeyEventEvent = None
-    char: int = 0
-
-    def __init__(self, keyEventEvent, char):
-        super().__init__()
-        self.keyEventEvent = keyEventEvent
-        self.char = char
+    key: str = 0
+    special: bool = False
 
 
 class KeyComponent(Component):
     keyEvent: util.Broadcaster[KeyEvent] = util.Broadcaster()
 
-    listener: keyboard.Listener = None
-
     async def init(self):
         await super().init()
-        self.startKeyboardListener()
+
+        asyncio.create_task(self.keyboardListener())
         asyncio.create_task(self.processKeyEventLogLoop())
 
-    def startKeyboardListener(self):
-        self.listener = keyboard.Listener(
-            on_press=lambda k: self.onPress(k),
-            on_release=lambda k: self.onRelease(k)
-        )
-        self.listener.start()
+    async def keyboardListener(self):
+        while True:
+            # 使用select检查输入是否有数据
+            # rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
+            rlist = asyncio.get_event_loop().run_in_executor(
+                None, select.select, [sys.stdin], [], [], 0.1
+            )
 
-    # 同步回调函数（在后台线程运行）
-    def onPress(self, key):
-        try:
-            key_char = key.char
-        except AttributeError:
-            key_char = str(key)
-        self.keyEvent.publish_nowait(KeyEvent(key_char, KeyEventEvent.PRESS))
+            if rlist:
+                key = sys.stdin.read(1)
 
-    def onRelease(self, key):
-        try:
-            key_char = key.char
-        except AttributeError:
-            key_char = str(key)
-        self.keyEvent.publish_nowait(KeyEvent(key_char, KeyEventEvent.RELEASE))
+                event = KeyEvent()
+                event.key = key
+                event.special = len(key) > 1
+
+                await self.keyEvent.publish(event)
 
     async def processKeyEventLogLoop(self):
-        queue = await  self.keyEvent.subscribe(asyncio.Queue(maxsize=16))
+        queue = await self.keyEvent.subscribe(asyncio.Queue(maxsize=16))
 
         while True:
             # 从队列获取事件
             event = await queue.get()
 
-            if event.keyEventEvent == KeyEventEvent.PRESS:
-                print(f"异步处理按键按下: {event.char}")
-                # 处理按键按下逻辑
-
-            elif event.keyEventEvent == KeyEventEvent.RELEASE:
-                print(f"异步处理按键释放: {event.char}")
-                # 处理按键释放逻辑
+            self.logger.info(f"key : {event.key}")
