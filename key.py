@@ -18,27 +18,27 @@ class KeyComponent(Component):
         await super().init()
 
         asyncio.create_task(self.keyboardListener())
-        asyncio.create_task(self.processKeyEventLogLoop())
 
     async def keyboardListener(self):
         while True:
             # 使用select检查输入是否有数据
             # rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
             try:
-                #rlist = await asyncio.get_event_loop().run_in_executor(
+                # rlist = await asyncio.get_event_loop().run_in_executor(
                 #    None, select.select, [sys.stdin], [], [], 0.1
-                #)
+                # )
 
-                #if rlist:
-                    #key = sys.stdin.read(1)
+                # if rlist:
+                # key = sys.stdin.read(1)
                 key = await asyncio.get_event_loop().run_in_executor(
                     None, sys.stdin.readline
                 )
-                
+
                 key = key.rstrip("\n")
-                
+                self.logger.info(f"key : {key}")
+
                 await self.keyEvent.publish(key)
-            
+
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -46,12 +46,3 @@ class KeyComponent(Component):
                     raise
                 self.logger.exception(f"keyboardListener exception: {str(e)}")
                 await asyncio.sleep(5)
-
-                
-
-    async def processKeyEventLogLoop(self):
-        queue = await self.keyEvent.subscribe(asyncio.Queue(maxsize=16))
-
-        while True:
-            # 从队列获取事件
-            self.logger.info(f"key : { await queue.get()}")

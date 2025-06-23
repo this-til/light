@@ -95,3 +95,22 @@ class ActionComponent(Component):
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
         pass
+
+    async def instructionLoop(self):
+        queue = self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+
+        while True:
+
+            try:
+                key = await queue.get()
+
+                if key == "open":
+                    await self.main.exclusiveServerReportComponent.openRollingDoor()
+
+                if key == "close":
+                    await self.main.exclusiveServerReportComponent.closeRollingDoor()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"instructionLoop Exception: {str(e)}")
