@@ -141,7 +141,7 @@ class DeviceComponent(Component):
                                     "power": _sensor.get("UavBaseStation_Power", 0)
                                 },
 
-                                "automaticGear": _sensor.get("Light_Mode", 0)  == 1,
+                                "automaticGear": _sensor.get("Light_Mode", 0) == 1,
                                 "gear": _sensor.get("Light_Gear", 0),
                                 "rollingDoorState": "CLOSED"
                             }
@@ -162,17 +162,17 @@ class DeviceComponent(Component):
 
                 event: CommandEvent = await queue.get()
                 if event.key == "Device.Gear":
-                    self.sendCommand(Command(SetLightGear, int(event.value)))
+                    await self.sendCommand(Command(SetLightGear, int(event.value)))
                     pass
 
                 if event.key == "Device.Switch":
                     automatic: bool = event.value == "true"
-                    self.sendCommand(Command(SetLightSwitch, 0 if automatic else 1))
+                    await self.sendCommand(Command(SetLightSwitch, 0 if automatic else 1))
                     pass
 
                 if event.key == "Device.RollingDoor":
                     automatic: bool = event.value == "true"
-                    self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
+                    await self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
 
             except asyncio.CancelledError:
                 raise
@@ -199,11 +199,7 @@ class DeviceComponent(Component):
                         self.commandIdMap.pop(commandId)
                         continue
 
-                    jsonData = command.toJson()
-                    strData = json.dumps(jsonData)
-                    self.logger.debug(f"发送命令: {strData}")
-                    await self.main.uartComponent.writeAsync(strData.encode("utf-8"))
-                    await asyncio.sleep(1)
+                    await self.writeCommand(command)
 
             except asyncio.CancelledError:
                 raise
@@ -214,7 +210,7 @@ class DeviceComponent(Component):
         while True:
             try:
                 command = Command(SetLightGear, 1000)
-                self.sendCommand(command)
+                await self.sendCommand(command)
                 await command.wait()
             except asyncio.CancelledError:
                 raise
@@ -228,8 +224,15 @@ class DeviceComponent(Component):
         util.setFromJson(key, value, self.deviceValue)
         await self.dataUpdate.publish(copy.deepcopy(self.deviceValue))
 
-    def sendCommand(self, command: Command) -> Command:
+    async def sendCommand(self, command: Command) -> Command:
         self.commandId += 1
         command.commandId = self.commandId
         self.commandIdMap[self.commandId] = command
+        await self.writeCommand(command)
         return command
+
+    async def writeCommand(self, command: Command):
+        jsonData = command.toJson()
+        strData = json.dumps(jsonData)
+        self.logger.debug(f"发送命令: {strData}")
+        await self.main.uartComponent.writeAsync(strData.encode("utf-8"))

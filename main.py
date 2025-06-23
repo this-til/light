@@ -9,30 +9,6 @@ from typing import Generic, TypeVar
 logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
 )
-
-logging.config.dictConfig(
-    {
-        "version": 1,
-        "loggers": {
-            "websockets.client": {  # 专门针对gql库
-                "level": "WARN",  # 设置日志等级
-                "handlers": ["console"],
-                "propagate": False,  # 阻止传播到根记录器
-            }
-        },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "formatter": "simple",
-                "level": "DEBUG",
-            }
-        },
-        "formatters": {
-            "simple": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"}
-        },
-    }
-)
-
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")  # 定义泛型类型
