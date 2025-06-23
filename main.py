@@ -115,6 +115,7 @@ class Mian:
         from command import CommandComponent
         from display import DisplayComponent
         from broadcast import BroadcastComponent
+        from key import KeyComponent
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
@@ -132,6 +133,7 @@ class Mian:
         self.commandComponent = CommandComponent()
         self.displayComponent = DisplayComponent()
         self.broadcastComponent = BroadcastComponent()
+        self.keyComponent = KeyComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
@@ -149,6 +151,7 @@ class Mian:
         self.components.append(self.commandComponent)
         self.components.append(self.displayComponent)
         self.components.append(self.broadcastComponent)
+        self.components.append(self.keyComponent)
 
         for component in self.components:
             component.main = self  # type: ignore

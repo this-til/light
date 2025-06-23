@@ -143,7 +143,7 @@ class DeviceComponent(Component):
 
                                 "automaticGear": _sensor.get("Light_Mode", 0) == 1,
                                 "gear": _sensor.get("Light_Gear", 0),
-                                "rollingDoorState": "CLOSED"
+                                "rollingDoorState": _sensor.get("Rolling_State", "CLOSED")
                             }
                         )
 
