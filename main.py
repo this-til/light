@@ -1,6 +1,24 @@
 #!/usr/bin/python3False
 from __future__ import annotations
 
+import sys
+import platform
+import os
+import datetime
+
+print("=" * 40, "Environment Information", "=" * 40)
+print(f"Python Version: {sys.version}")
+print(f"Python Executable: {sys.executable}")
+print(f"OS Platform: {platform.platform()}")
+print(f"System: {platform.system()} {platform.release()}")
+print(f"Processor: {platform.processor()}")
+print(f"Current Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"Working Directory: {os.getcwd()}")
+print(f"Username: {os.getlogin()}")
+print(f"Machine Name: {platform.node()}")
+print("=" * 100)
+
+
 import logging
 import logging.config
 import asyncio
