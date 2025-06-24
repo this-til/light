@@ -20,7 +20,7 @@ class ActionComponent(Component):
         self.actionClient = actionlib.SimpleActionClient("move_base", MoveBaseAction)
         self.actionClient.wait_for_server()
 
-        await asyncio.create_task(self.instructionLoop())
+        asyncio.create_task(self.instructionLoop())
 
     async def actionNav(self, x_axle=1, y_axle=0, x=0, y=0, z=0, w=1.0):
         goal = MoveBaseGoal()
