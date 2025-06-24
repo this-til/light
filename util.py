@@ -834,7 +834,7 @@ def DEC2HEX_doc(x: int) -> int:
     )
 
 
-def findCrosshair(mat: cv2.typing.MatLike) -> (float, float):
+def findCrosshair(mat: cv2.typing.MatLike) -> (float, float) | None:
     # 转换为HSV颜色空间（更好识别红色）
     hsv = cv2.cvtColor(mat, cv2.COLOR_BGR2HSV)
 
@@ -866,7 +866,6 @@ def findCrosshair(mat: cv2.typing.MatLike) -> (float, float):
     )
 
     if not contours:
-        print("No crosshair found")
         return None
 
     # 找到最大轮廓（假设十字准星是最大的红色物体）
