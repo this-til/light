@@ -205,7 +205,7 @@ class ActionComponent(Component):
             raise Exception("运动控制组件不可用，校准失败")
 
     async def instructionLoop(self):
-        queue = self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
         while True:
 
