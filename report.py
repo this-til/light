@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from io import BytesIO
-from typing import cast
+from typing import cast, Callable, Awaitable
 
 import aiohttp
 import backoff
@@ -461,7 +461,7 @@ class ExclusiveServerReportComponent(Component):
         if not self.session:
             self.logger.error("WebSocket session 未建立")
             return None
-            
+
         result = await self.session.execute(
             self.getLightDeviceStateGql,
             {
@@ -476,7 +476,7 @@ class ExclusiveServerReportComponent(Component):
             return None
 
         online = device_data.get("online", False)
-        
+
         # 检查是否有 Light 状态数据
         as_light = device_data.get("asLight")
         if not as_light:
@@ -485,7 +485,7 @@ class ExclusiveServerReportComponent(Component):
 
         light_state_data = as_light.get("lightState")
         rolling_door_state = None
-        
+
         if light_state_data and light_state_data.get("rollingDoorState"):
             rolling_door_state_str = light_state_data["rollingDoorState"]
             try:
@@ -516,7 +516,7 @@ class ExclusiveServerReportComponent(Component):
         """设置卷帘门开闭状态"""
         if not self.session:
             raise RuntimeError("WebSocket session 未建立")
-            
+
         result = await self.session.execute(
             self.setRollingDoorGql,
             {
@@ -536,45 +536,49 @@ class ExclusiveServerReportComponent(Component):
 
         result_type = light_result.get("resultType")
         message = light_result.get("message", "")
-        
+
         if result_type == "SUCCESSFUL":
             action = "打开" if open else "关闭"
             self.logger.info(f"成功{action}设备 {self.lodgeLight} 的卷帘门")
         else:
             raise RuntimeError(f"设置卷帘门失败: {result_type} - {message}")
 
-    async def waitForRollingDoorState(self, target_state: RollingDoorState, timeout: int = 30) -> None:
+    async def waitForRollingDoorState(self, target_state: RollingDoorState, retry : Callable[[], Awaitable[None]] = None, timeout: int = 30 ) -> None:
         """等待卷帘门状态达到目标状态"""
+        if retry is not None:
+            await retry()
+
         start_time = asyncio.get_event_loop().time()
-        
+
         while True:
             current_time = asyncio.get_event_loop().time()
             if current_time - start_time > timeout:
                 raise TimeoutError(f"等待卷帘门状态变为 {target_state.value} 超时")
-            
+
             light_state = await self.getLightDeviceState()
             if not light_state:
                 raise RuntimeError("无法获取设备状态")
-            
+
             if not light_state.online:
                 raise RuntimeError("设备离线")
-            
+
             if light_state.rollingDoorState == target_state:
                 self.logger.info(f"卷帘门状态已变为: {target_state.value}")
                 return
-            
+
             self.logger.debug(f"当前卷帘门状态: {light_state.rollingDoorState}, 目标状态: {target_state.value}")
-            await asyncio.sleep(1)  # 等待1秒后重新检查
+            if retry is not None:
+                await retry()
+            await asyncio.sleep(5)
 
     async def openRollingDoor(self) -> None:
         """打开卷帘门并等待完成"""
-        await self.setRollingDoor(True)
-        await self.waitForRollingDoorState(RollingDoorState.OPENED)
+        await self.waitForRollingDoorState(RollingDoorState.OPENED, lambda : self.setRollingDoor(True))
 
     async def closeRollingDoor(self) -> None:
         """关闭卷帘门并等待完成"""
         await self.setRollingDoor(False)
-        await self.waitForRollingDoorState(RollingDoorState.CLOSED)
+        await self.waitForRollingDoorState(RollingDoorState.CLOSED, lambda : self.setRollingDoor(False))
 
 
 class RollingDoorState(Enum):
