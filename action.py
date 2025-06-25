@@ -162,11 +162,11 @@ class ActionComponent(Component):
         """
 
         if abs(offset_x) > 100:
-            calibration_speed = 0.08  # 偏差大时使用较快速度
+            calibration_speed = 0.1  # 偏差大时使用较快速度
         elif abs(offset_x) > 50:
-            calibration_speed = 0.05  # 中等偏差使用中等速度
+            calibration_speed = 0.2  # 中等偏差使用中等速度
         else:
-            calibration_speed = 0.03  # 偏差小时使用最慢速度
+            calibration_speed = 0.3  # 偏差小时使用最慢速度
 
         self.logger.info(f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用速度{calibration_speed:.2f}")
 
@@ -259,11 +259,11 @@ class ActionComponent(Component):
         
         # 根据距离设置角速度
         if distance > 50:
-            angular_speed = 0.2  # 距离远时使用较快角速度
+            angular_speed = 0.5  # 距离远时使用较快角速度
         elif distance > 25:
-            angular_speed = 0.1  # 中等距离使用中等角速度
+            angular_speed = 0.4  # 中等距离使用中等角速度
         else:
-            angular_speed = 0.05  # 距离近时使用最慢角速度
+            angular_speed = 0.3  # 距离近时使用最慢角速度
             
         # 计算旋转方向：基于十字准星相对于中心的位置
         # 如果十字准星在右侧，需要逆时针旋转（正角速度）
@@ -301,7 +301,7 @@ class ActionComponent(Component):
                 if key == "close":
                     await self.main.exclusiveServerReportComponent.closeRollingDoor()
 
-                if key == "calibration":
+                if key == "c":
                     await self.calibration()
 
                 if key == "calibrationByAngle":
