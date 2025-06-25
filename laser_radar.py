@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 
 import roslaunch
@@ -26,6 +28,8 @@ class LaserRadarComponent(Component):
         self.roscarMappingLaunchFile = roslaunch.parent.ROSLaunchParent(uuid, [self.roscarMappingLaunchPath])
 
         rospy.Subscriber("/scan", LaserScan, self.laserRadarCallback)
+        
+        asyncio.create_task(self.readAheadTestLoop())
 
     def laserRadarCallback(self, msg):
         self.source.publish_nowait(msg.ranges)
@@ -35,8 +39,17 @@ class LaserRadarComponent(Component):
         queue = await self.source.subscribe(asyncio.Queue(maxsize=1))
         while True:
             r = await queue.get()
-            self.logger.info(f"前方测距 {r[180]}")
-            await asyncio.sleep(0.1)
+            #self.logger.info(f"0:{r[0]}, 90:{r[90]}, 180:{r[180]}, 270:{r[270]}")
+            #r_180 = r[180]
+            #if r_180 == 31.0:
+            #    continue
+            #self.logger.info(f"180:{r_180}")
+            
+            r_0 = r[0]
+            if r_0 == 31.0:
+                continue
+            self.logger.info(f"0:{r_0}")
+        
 
     def start(self):
         self.roscarMappingLaunchFile.start()
