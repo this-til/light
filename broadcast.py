@@ -19,10 +19,11 @@ class BroadcastComponent(Component):
 
     async def awakeInit(self):
         await super().awakeInit()
-        # pg.mixer.init()
-
         # 扫描音频文件并生成表
         await self.scanAudioFiles()
+
+        # 启动指令循环
+        asyncio.create_task(self.instructionLoop())
 
     async def scanAudioFiles(self):
         """扫描soundSource目录下的音频文件并生成文件表"""
@@ -59,11 +60,11 @@ class BroadcastComponent(Component):
     async def playAudio(self, fileName: str, loop: int = 0) -> bool:
         """
         异步播放音频文件
-        
+
         Args:
             fileName: 音频文件名（不包含扩展名）
             loop: 循环次数，0表示播放一次，-1表示无限循环
-            
+
         Returns:
             bool: True表示播放完成，False表示被取消或出错
         """
@@ -101,11 +102,11 @@ class BroadcastComponent(Component):
     async def playAudioAsync(self, fileName: str, loop: int = 0) -> asyncio.Task:
         """
         创建异步播放任务
-        
+
         Args:
             fileName: 音频文件名
             loop: 循环次数
-            
+
         Returns:
             asyncio.Task: 播放任务，可以用于取消
         """
@@ -138,7 +139,8 @@ class BroadcastComponent(Component):
         return fileName in self.audioFiles
 
     async def playLoop(self):
-        queue: asyncio.Queue[CommandEvent] = self.main.commandComponent.commandEvent.publish(asyncio.Queue(maxsize=16))
+        queue: asyncio.Queue[CommandEvent] = self.main.commandComponent.commandEvent.subscribe(
+            asyncio.Queue(maxsize=16))
 
         while True:
             try:
@@ -155,5 +157,54 @@ class BroadcastComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self.logger.exception(f"保存配置文件时发生异常:{e} ")
+                self.logger.exception(f"播放循环异常:{e} ")
                 await asyncio.sleep(5)
+
+    async def instructionLoop(self):
+        """指令循环，处理键盘事件触发的音频播放命令"""
+        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+
+        while True:
+            try:
+                key = await queue.get()
+
+                # 播放指定音频文件
+                if key.startswith("play:"):
+                    audio_name = key.split(":", 1)[1]
+                    if self.hasAudio(audio_name):
+                        await self.playAudioAsync(audio_name)
+                        self.logger.info(f"通过指令播放音频: {audio_name}")
+                    else:
+                        self.logger.warning(f"指定的音频文件不存在: {audio_name}")
+
+                # 播放并循环指定音频文件
+                elif key.startswith("playLoop:"):
+                    audio_name = key.split(":", 1)[1]
+                    if self.hasAudio(audio_name):
+                        await self.playAudioAsync(audio_name, loop=-1)
+                        self.logger.info(f"通过指令循环播放音频: {audio_name}")
+                    else:
+                        self.logger.warning(f"指定的音频文件不存在: {audio_name}")
+
+                # 停止当前播放
+                elif key == "stopAudio":
+                    await self.stopAudio()
+                    self.logger.info("通过指令停止音频播放")
+
+                # 列出所有可用音频文件
+                elif key == "listAudio":
+                    audio_list = list(self.audioFiles.keys())
+                    if audio_list:
+                        self.logger.info(f"可用音频文件: {', '.join(audio_list)}")
+                    else:
+                        self.logger.info("没有可用的音频文件")
+
+                # 重新扫描音频文件
+                elif key == "rescanAudio":
+                    await self.scanAudioFiles()
+                    self.logger.info("重新扫描音频文件完成")
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"instructionLoop Exception: {str(e)}")

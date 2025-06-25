@@ -25,8 +25,7 @@ class CommandType:
 SetLightGear: CommandType = CommandType("SetLightGear", "uint")
 SetLightSwitch: CommandType = CommandType("LightModeSwitch", "uint")
 RollingDoor: CommandType = CommandType("RollingDoor", "uint")
-UavBaseStationCover: CommandType = CommandType("UavBaseStationCover", "uint")
-
+UavBaseStationOperation: CommandType = CommandType("UavOperation", "string")
 
 class Command:
     commandType: CommandType
@@ -176,8 +175,16 @@ class DeviceComponent(Component):
                     await self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
 
                 if event.key == "UavBaseStation.Cover":
-                    automatic: bool = event.value == "true"
-                    await self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
+                    if event.value == "true":
+                        await self.sendCommand(Command(UavBaseStationOperation, "CabinDoorOpen"))
+                    else:
+                        await self.sendCommand(Command(UavBaseStationOperation, "CabinDoorClose"))
+
+                if event.key == "UavBaseStation.Clamp":
+                    if event.value == "true":
+                        await self.sendCommand(Command(UavBaseStationOperation, "LocalOpen"))
+                    else:
+                        await self.sendCommand(Command(UavBaseStationOperation, "LocalClose"))
 
             except asyncio.CancelledError:
                 raise
