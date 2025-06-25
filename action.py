@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pyttsx3
 import asyncio
 from dataclasses import dataclass
 from typing import Tuple, Optional

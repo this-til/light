@@ -23,6 +23,9 @@ class BroadcastComponent(Component):
 
         # 扫描音频文件并生成表
         await self.scanAudioFiles()
+        
+        # 启动指令循环
+        asyncio.create_task(self.instructionLoop())
 
     async def scanAudioFiles(self):
         """扫描soundSource目录下的音频文件并生成文件表"""
@@ -155,5 +158,54 @@ class BroadcastComponent(Component):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self.logger.exception(f"保存配置文件时发生异常:{e} ")
+                self.logger.exception(f"播放循环异常:{e} ")
                 await asyncio.sleep(5)
+
+    async def instructionLoop(self):
+        """指令循环，处理键盘事件触发的音频播放命令"""
+        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+
+        while True:
+            try:
+                key = await queue.get()
+
+                # 播放指定音频文件
+                if key.startswith("play:"):
+                    audio_name = key.split(":", 1)[1]
+                    if self.hasAudio(audio_name):
+                        await self.playAudioAsync(audio_name)
+                        self.logger.info(f"通过指令播放音频: {audio_name}")
+                    else:
+                        self.logger.warning(f"指定的音频文件不存在: {audio_name}")
+
+                # 播放并循环指定音频文件
+                elif key.startswith("playLoop:"):
+                    audio_name = key.split(":", 1)[1]
+                    if self.hasAudio(audio_name):
+                        await self.playAudioAsync(audio_name, loop=-1)
+                        self.logger.info(f"通过指令循环播放音频: {audio_name}")
+                    else:
+                        self.logger.warning(f"指定的音频文件不存在: {audio_name}")
+
+                # 停止当前播放
+                elif key == "stopAudio":
+                    await self.stopAudio()
+                    self.logger.info("通过指令停止音频播放")
+
+                # 列出所有可用音频文件
+                elif key == "listAudio":
+                    audio_list = list(self.audioFiles.keys())
+                    if audio_list:
+                        self.logger.info(f"可用音频文件: {', '.join(audio_list)}")
+                    else:
+                        self.logger.info("没有可用的音频文件")
+
+                # 重新扫描音频文件
+                elif key == "rescanAudio":
+                    await self.scanAudioFiles()
+                    self.logger.info("重新扫描音频文件完成")
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"instructionLoop Exception: {str(e)}")
