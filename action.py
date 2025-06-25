@@ -130,18 +130,13 @@ class ActionComponent(Component):
                     await asyncio.sleep(0.5)
                     continue
 
-                # 获取图像中心位置
-                image_height, image_width = mat.shape[:2]
-                center_x = image_width / 2
-                center_y = image_height / 2
+                center_x = 360 # 图像中心320 物理中心360
 
                 # 计算X轴偏差（只关注垂直于车身的标识）
                 crosshair_x, crosshair_y = crosshair
                 offset_x = crosshair_x - center_x
 
-                self.logger.info(f"校准第{iteration + 1}次: 十字准星X位置{crosshair_x:.1f}, "
-                                 f"图像中心X位置{center_x:.1f}, "
-                                 f"X轴偏差{offset_x:.1f}")
+                self.logger.info(f"校准第{iteration + 1}次: 十字准星X位置{crosshair_x:.1f}, X轴偏差{offset_x:.1f}")
 
                 # 检查X轴是否已经足够接近中心
                 if abs(offset_x) <= tolerance:
@@ -167,22 +162,10 @@ class ActionComponent(Component):
         :param offset_x: X轴偏差（正值表示十字准星在图像右侧）
         """
         # 校准时使用较小的速度，提高精度
-        calibration_speed = 0.05  # 校准速度范围：0.03-0.1
-
-        # 根据偏差大小动态调整速度
-        if abs(offset_x) > 100:
-            calibration_speed = 0.08  # 偏差大时使用较快速度
-        elif abs(offset_x) > 50:
-            calibration_speed = 0.05  # 中等偏差使用中等速度
-        else:
-            calibration_speed = 0.03  # 偏差小时使用最慢速度
-
-        # 计算移动时间（基于偏差大小）
-        base_time = 0.3  # 基础移动时间
-        move_time = max(0.1, min(1.0, abs(offset_x) / 100 * base_time))
+        calibration_speed = 0.1  # 校准速度范围：0.03-0.1
 
         self.logger.info(
-            f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用速度{calibration_speed:.2f}m/s, 移动时间{move_time:.2f}s")
+            f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用速度{calibration_speed:.2f}")
 
         # 使用运动控制调整位置
         if hasattr(self.main, 'motionComponent'):
@@ -197,11 +180,8 @@ class ActionComponent(Component):
                 else:
                     # 十字准星在左侧，车需要向左移动（正Y方向）
                     self.main.motionComponent.setVelocity(linear_y=calibration_speed)
-
-                self.main.motionComponent.publishVelocity()
-                await asyncio.sleep(move_time)
+                await asyncio.sleep(0.3)
                 self.main.motionComponent.stopMotion()
-                self.main.motionComponent.publishVelocity()
         else:
             self.logger.error("运动控制组件不可用，无法调整车辆位置")
             raise Exception("运动控制组件不可用，校准失败")

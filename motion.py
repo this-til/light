@@ -32,6 +32,8 @@ class MotionComponent(Component):
         if angular_z is not None:
             self.msg.angular.z = angular_z
 
+        self.publishVelocity()
+
     def publishVelocity(self):
         """发布速度消息的公共函数"""
         if self.velPub:

@@ -60,6 +60,7 @@ class OrbbecCameraComponent(Component):
         try:
             #self.logger.debug("imageCallback")
             mat = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            mat = util.brightnessNormalization(mat)
             self.source.publish_nowait(mat)
         except Exception as e:
             self.logger.exception(e)
@@ -222,7 +223,6 @@ class OrbbecCameraComponent(Component):
         pass
 
     def imshow(self, name, mat, waitKey):
-        mat = util.brightnessNormalization(mat)
         center = util.findCrosshair(mat)
         mat = util.drawCrosshairCenter(mat, center)
         cv2.imshow(name, mat)
