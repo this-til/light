@@ -1,6 +1,7 @@
 import pygame as pg
 import os
 import asyncio
+import random
 from typing import Dict, Optional
 from pathlib import Path
 
@@ -161,6 +162,24 @@ class BroadcastComponent(Component):
                 self.logger.exception(f"播放循环异常:{e} ")
                 await asyncio.sleep(5)
 
+    async def _playRandomSequence(self, audio_sequence: list):
+        """连续播放随机音频序列"""
+        try:
+            for i, audio_name in enumerate(audio_sequence, 1):
+                self.logger.info(f"连续播放第{i}/{len(audio_sequence)}个: {audio_name}")
+                success = await self.playAudio(audio_name)
+                if not success:
+                    self.logger.warning(f"播放失败，跳过: {audio_name}")
+                    continue
+                # 短暂停顿
+                await asyncio.sleep(0.5)
+            self.logger.info("连续随机播放序列完成")
+        except asyncio.CancelledError:
+            self.logger.info("连续随机播放被取消")
+            await self.stopAudio()
+        except Exception as e:
+            self.logger.exception(f"连续随机播放异常: {str(e)}")
+
     async def instructionLoop(self):
         """指令循环，处理键盘事件触发的音频播放命令"""
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
@@ -204,6 +223,39 @@ class BroadcastComponent(Component):
                 elif key == "rescanAudio":
                     await self.scanAudioFiles()
                     self.logger.info("重新扫描音频文件完成")
+
+                # 随机播放一个音频文件
+                elif key == "playRandom":
+                    if self.audioFiles:
+                        random_audio = random.choice(list(self.audioFiles.keys()))
+                        await self.playAudioAsync(random_audio)
+                        self.logger.info(f"随机播放音频: {random_audio}")
+                    else:
+                        self.logger.warning("没有可用的音频文件进行随机播放")
+
+                # 随机循环播放一个音频文件
+                elif key == "playRandomLoop":
+                    if self.audioFiles:
+                        random_audio = random.choice(list(self.audioFiles.keys()))
+                        await self.playAudioAsync(random_audio, loop=-1)
+                        self.logger.info(f"随机循环播放音频: {random_audio}")
+                    else:
+                        self.logger.warning("没有可用的音频文件进行随机循环播放")
+
+                # 连续随机播放指定数量的音频文件
+                elif key.startswith("playRandomSequence:"):
+                    try:
+                        count_str = key.split(":", 1)[1]
+                        count = int(count_str)
+                        if self.audioFiles and count > 0:
+                            audio_list = list(self.audioFiles.keys())
+                            selected_audios = random.choices(audio_list, k=min(count, len(audio_list)))
+                            asyncio.create_task(self._playRandomSequence(selected_audios))
+                            self.logger.info(f"开始连续随机播放 {len(selected_audios)} 个音频: {', '.join(selected_audios)}")
+                        else:
+                            self.logger.warning(f"无法进行连续随机播放: 音频文件数={len(self.audioFiles)}, 请求数量={count}")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的连续随机播放格式: {key}, 错误: {str(e)}")
 
             except asyncio.CancelledError:
                 raise
