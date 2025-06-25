@@ -108,9 +108,11 @@ class Model:
         originalSize: tuple[int, int] = (h, w)
 
         # util.changeSize(inputImage, size)
-        inputImage = await asyncio.get_event_loop().run_in_executor(image_executor, util.changeSize, inputImage, self.size)
+        inputImage = await asyncio.get_event_loop().run_in_executor(image_executor, util.changeSize, inputImage,
+                                                                    self.size)
         # _inputImage = cv2.cvtColor(_inputImage, cv2.COLOR_BGR2RGB)
-        inputImage = await asyncio.get_event_loop().run_in_executor(image_executor, cv2.cvtColor, inputImage, cv2.COLOR_BGR2RGB)
+        inputImage = await asyncio.get_event_loop().run_in_executor(image_executor, cv2.cvtColor, inputImage,
+                                                                    cv2.COLOR_BGR2RGB)
 
         return await self.directRun(inputImage, originalSize)
 
@@ -430,11 +432,21 @@ class FaceModel(Model):
         super().__init__("人脸", "face", [self.face], detectionComponent)
 
 
-class AccumulatedWater(Model):
+class WaterModel(Model):
     accumulatedWater = Item("积水", Color(0, 0, 255))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("积水", "accumulatedWater", [self.accumulatedWater], detectionComponent)
+        super().__init__("积水", "water", [self.accumulatedWater], detectionComponent)
+
+
+class FireModel(Model):
+    smoke = Item("烟", Color(0, 0, 255))
+    fire = Item("火", Color(0, 0, 255))
+
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__("火灾", "fire", [self.smoke, self.fire], detectionComponent)
+
+    pass
 
 
 OBJ_THRESH: float = 0.5
@@ -442,7 +454,6 @@ NMS_THRESH: float = 0.5
 
 
 class DetectionComponent(Component):
-    
     modelPath: ConfigField[str] = ConfigField()
 
     OBJ_THRESH: ConfigField[float] = ConfigField()
@@ -452,7 +463,8 @@ class DetectionComponent(Component):
     fallDownModel: FallDownModel = None  # type: ignore
     carModel: CarModel = None  # type: ignore
     faceModel: FaceModel = None  # type: ignore
-    accumulatedWater: AccumulatedWater = None  # type: ignore
+    accumulatedWater: WaterModel = None  # type: ignore
+    fireModel: FireModel = None
 
     modelList: list[Model] = []
     modelMap: dict[str, Model] = {}
@@ -464,14 +476,16 @@ class DetectionComponent(Component):
         self.fallDownModel = FallDownModel(self)
         self.carModel = CarModel(self)
         self.faceModel = FaceModel(self)
-        self.accumulatedWater = AccumulatedWater(self)
+        self.accumulatedWater = WaterModel(self)
+        self.fireModel = FireModel(self)
 
         self.modelList = [
             self.carAccidentModel,
             self.fallDownModel,
             self.carModel,
             self.faceModel,
-            self.accumulatedWater
+            self.accumulatedWater,
+            self.fireModel
         ]
 
         for m in self.modelList:
@@ -490,13 +504,13 @@ class DetectionComponent(Component):
     async def release(self):
         """清理资源"""
         await super().release()
-        
+
         # 关闭线程池
         if 'rknn_executor' in globals():
             rknn_executor.shutdown(wait=True)
         if 'image_executor' in globals():
             image_executor.shutdown(wait=True)
-            
+
         # 释放RKNN模型
         for model in self.modelList:
             if model.rknn is not None:

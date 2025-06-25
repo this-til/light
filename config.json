@@ -45,7 +45,7 @@
     "enable": true,
     "enablePushFrames": false,
     "enableDetection": true,
-    "ip": "192.168.117.100",
+    "ip": "192.168.116.100",
     "rtspPort": 554,
     "sdkPort": 8000,
     "username": "admin",
