@@ -50,6 +50,7 @@ class OrbbecCameraComponent(Component):
         if self.enable:
             if self.useRosFrames:
                 rospy.Subscriber("/camera/color/image_raw", Image, self.imageCallback)
+                rospy.Subscriber("/camera/depth/image_raw", Image, self.depthCallback)
             else:
                 asyncio.create_task(self.readImageLoop())
             # asyncio.create_task(self.handleFrames())
