@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-from __future__ import annotations
 
 import logging
 import asyncio
@@ -148,7 +147,7 @@ class Model:
 
             return outList
 
-        return await asyncio.get_event_loop().run_in_executor(None, handleRes)
+        return await asyncio.get_event_loop().run_in_executor(image_executor, handleRes)
 
     def post_process(self, input_data):
         boxes, scores, classes_conf = [], [], []
@@ -431,11 +430,21 @@ class FaceModel(Model):
         super().__init__("人脸", "face", [self.face], detectionComponent)
 
 
-class AccumulatedWater(Model):
+class WaterModel(Model):
     accumulatedWater = Item("积水", Color(0, 0, 255))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("积水", "accumulatedWater", [self.accumulatedWater], detectionComponent)
+        super().__init__("积水", "water", [self.accumulatedWater], detectionComponent)
+
+
+class FireModel(Model):
+    smoke = Item("烟", Color(0, 0, 255))
+    fire = Item("火", Color(0, 0, 255))
+
+    def __init__(self, detectionComponent: 'DetectionComponent'):
+        super().__init__("火灾", "fire", [self.smoke, self.fire], detectionComponent)
+
+    pass
 
 
 OBJ_THRESH: float = 0.5
@@ -452,7 +461,8 @@ class DetectionComponent(Component):
     fallDownModel: FallDownModel = None  # type: ignore
     carModel: CarModel = None  # type: ignore
     faceModel: FaceModel = None  # type: ignore
-    accumulatedWater: AccumulatedWater = None  # type: ignore
+    accumulatedWater: WaterModel = None  # type: ignore
+    fireModel: FireModel = None
 
     modelList: list[Model] = []
     modelMap: dict[str, Model] = {}
@@ -464,14 +474,16 @@ class DetectionComponent(Component):
         self.fallDownModel = FallDownModel(self)
         self.carModel = CarModel(self)
         self.faceModel = FaceModel(self)
-        self.accumulatedWater = AccumulatedWater(self)
+        self.accumulatedWater = WaterModel(self)
+        self.fireModel = FireModel(self)
 
         self.modelList = [
             self.carAccidentModel,
             self.fallDownModel,
             self.carModel,
             self.faceModel,
-            self.accumulatedWater
+            self.accumulatedWater,
+            self.fireModel
         ]
 
         for m in self.modelList:
