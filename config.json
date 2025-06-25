@@ -23,8 +23,8 @@
     "pushRtspUrl": "rtsp://localhost:8554/orbbec_cam"
   },
   "DetectionComponent": {
-    "modelPath": "/home/cat/catkin_ws/src/roscar_pkg/scripts/car/model",
-    "#modelPath": "/home/cat/car/model",
+    "#modelPath": "/home/cat/catkin_ws/src/roscar_pkg/scripts/car/model",
+    "modelPath": "/home/cat/car/model",
     "OBJ_THRESH": 0.5,
     "NMS_THRESH": 0.5
   },
@@ -35,7 +35,7 @@
     "roscarMappingLaunchPath": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_mapping.launch"
   },
   "BroadcastComponent" : {
-    "soundSource" : "/home/cat/catkin_ws/src/roscar_pkg/sound",
-    "#soundSource" : "/home/cat/car/sound"
+    "#soundSource" : "/home/cat/catkin_ws/src/roscar_pkg/sound",
+    "soundSource" : "/home/cat/car/sound"
   }
 }
