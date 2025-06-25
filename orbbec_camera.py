@@ -36,6 +36,10 @@ class OrbbecCameraComponent(Component):
     sustainedDetectionCondition = asyncio.Condition()
 
     source: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+    brightnessNormalizationSource: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+
+    depth: Broadcaster[cv2.typing.MatLike] = Broadcaster()
+
     detectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
     sustainedDetectionKeyframe: Broadcaster[detection.Result] = Broadcaster()
 
@@ -58,12 +62,17 @@ class OrbbecCameraComponent(Component):
 
     def imageCallback(self, msg):
         try:
-            #self.logger.debug("imageCallback")
+            # self.logger.debug("imageCallback")
             mat = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            mat = util.brightnessNormalization(mat)
             self.source.publish_nowait(mat)
+            mat = util.brightnessNormalization(mat)
+            self.brightnessNormalizationSource.publish_nowait(mat)
         except Exception as e:
             self.logger.exception(e)
+
+    def depthCallback(self, msg):
+        mat = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+        self.depth.publish_nowait(mat)
 
     async def readImageLoop(self):
 
@@ -227,8 +236,8 @@ class OrbbecCameraComponent(Component):
         mat = util.drawCrosshairCenter(mat, center)
         cv2.imshow(name, mat)
         cv2.waitKey(waitKey)
-        #self.logger.debug("imshow")
-        
+        # self.logger.debug("imshow")
+
     async def renderFramesLoop(self):
         framesQueue: asyncio.Queue[cv2.typing.MatLike] = await self.source.subscribe(
             asyncio.Queue(maxsize=16)
@@ -237,12 +246,12 @@ class OrbbecCameraComponent(Component):
         while True:
             try:
                 mat = await framesQueue.get()
-                #self.logger.debug("renderFramesLoop")
+                # self.logger.debug("renderFramesLoop")
                 await asyncio.get_event_loop().run_in_executor(
                     None, self.imshow, "Camera View", mat, 1
                 )
-                #cv2.imshow("Camera View", mat)
-                #cv2.waitKey(0)
+                # cv2.imshow("Camera View", mat)
+                # cv2.waitKey(0)
                 await asyncio.sleep(0.01)
             except asyncio.CancelledError:
                 raise
@@ -250,5 +259,3 @@ class OrbbecCameraComponent(Component):
                 self.logger.exception(f"渲染帧时发生异常: {str(e)}")
                 await asyncio.sleep(5)
                 pass
-
-

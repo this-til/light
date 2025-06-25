@@ -10,6 +10,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 import util
 from main import Component
 
+import numpy as np
 
 class ActionComponent(Component):
     actionClient = None
@@ -74,7 +75,8 @@ class ActionComponent(Component):
         搜索目标，带超时机制
         :param timeout: 搜索超时时间（秒），默认30秒
         """
-        queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.source.subscribe(
+        queue: asyncio.Queue[
+            cv2.typing.MatLike] = await self.main.orbbecCameraComponent.brightnessNormalizationSource.subscribe(
             asyncio.Queue(maxsize=1))
 
         self.main.motionComponent.disableSpeedAttenuation()
@@ -126,7 +128,7 @@ class ActionComponent(Component):
             # 停止运动
             self.main.motionComponent.stopMotion()
             self.main.motionComponent.enableSpeedAttenuation()
-            await self.main.orbbecCameraComponent.source.unsubscribe(queue)
+            await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
             self.logger.info("搜索目标结束，已停止运动")
 
     async def returnVoyage(self):
@@ -197,7 +199,8 @@ class ActionComponent(Component):
 
         self.main.motionComponent.disableSpeedAttenuation()
 
-        queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.source.subscribe(
+        queue: asyncio.Queue[
+            cv2.typing.MatLike] = await self.main.orbbecCameraComponent.brightnessNormalizationSource.subscribe(
             asyncio.Queue(maxsize=1))
 
         try:
@@ -233,7 +236,7 @@ class ActionComponent(Component):
 
         finally:
             self.main.motionComponent.enableSpeedAttenuation()
-            await self.main.orbbecCameraComponent.source.unsubscribe(queue)
+            await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
 
     async def _adjustVehiclePosition(self, offset_x: float):
         """
@@ -273,7 +276,8 @@ class ActionComponent(Component):
 
         self.main.motionComponent.disableSpeedAttenuation()
 
-        queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.source.subscribe(
+        queue: asyncio.Queue[
+            cv2.typing.MatLike] = await self.main.orbbecCameraComponent.brightnessNormalizationSource.subscribe(
             asyncio.Queue(maxsize=1))
 
         try:
@@ -314,7 +318,7 @@ class ActionComponent(Component):
 
         finally:
             self.main.motionComponent.enableSpeedAttenuation()
-            await self.main.orbbecCameraComponent.source.unsubscribe(queue)
+            await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
 
     async def _rotateToCenter(self, offset_x: float):
         """
@@ -341,6 +345,107 @@ class ActionComponent(Component):
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
 
+    def depthImageCalculateDistance(self, image: cv2.typing.MatLike):
+        """
+        计算深度图像中心区域的平均距离
+        :param image: 深度图像
+        """
+        region_size = 0.2  # 20% 的中心区域
+
+        height, width = image.shape
+        
+        # 计算中心区域的边界
+        x_start = int(width * (0.5 - region_size / 2))
+        x_end = int(width * (0.5 + region_size / 2))
+        y_start = int(height * (0.5 - region_size / 2))
+        y_end = int(height * (0.5 + region_size / 2))
+
+        # 提取中心区域
+        center_region = image[y_start:y_end, x_start:x_end]
+
+        # 创建有效深度值的掩码（排除0和无穷大值）
+        valid_mask = (center_region > 0) & (center_region < np.inf) & ~np.isnan(center_region)
+
+        if np.any(valid_mask):
+            valid_depths = center_region[valid_mask]
+            average_depth = np.mean(valid_depths)
+            min_depth = np.min(valid_depths)
+            max_depth = np.max(valid_depths)
+            valid_pixel_count = np.sum(valid_mask)
+            total_pixel_count = center_region.size
+            
+            # 转换深度值到米（如果需要的话，深度值可能是毫米）
+            # 假设深度值已经是毫米，转换为米
+            if average_depth > 100:  # 如果深度值很大，可能是毫米单位
+                average_depth = average_depth / 1000.0
+                min_depth = min_depth / 1000.0
+                max_depth = max_depth / 1000.0
+            
+            self.logger.info(f"深度统计 - 区域大小: {center_region.shape}, "
+                           f"有效像素: {valid_pixel_count}/{total_pixel_count}, "
+                           f"平均距离: {average_depth:.3f}m, "
+                           f"最近距离: {min_depth:.3f}m, "
+                           f"最远距离: {max_depth:.3f}m")
+        else:
+            self.logger.warning(f"中心区域({center_region.shape})未检测到有效深度数据")
+            
+        return
+
+    async def testDepthDistance(self, duration: float = 10.0):
+        """
+        测试深度距离计算，输出指定时间内的图像距离
+        :param duration: 测试持续时间（秒），默认10秒
+        """
+        self.logger.info(f"开始深度距离测试，持续时间: {duration}秒")
+        
+        # 订阅深度图像数据流
+        depth_queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.depth.subscribe(
+            asyncio.Queue(maxsize=1))
+        
+        start_time = asyncio.get_event_loop().time()
+        measurement_count = 0
+        
+        try:
+            while True:
+                current_time = asyncio.get_event_loop().time()
+                elapsed_time = current_time - start_time
+                
+                # 检查是否已经达到测试时间
+                if elapsed_time >= duration:
+                    self.logger.info(f"深度距离测试完成，总计测量{measurement_count}次，耗时{elapsed_time:.1f}秒")
+                    break
+                
+                try:
+                    # 获取深度图像，设置2秒超时
+                    depth_image = await asyncio.wait_for(depth_queue.get(), timeout=2.0)
+                    
+                    if depth_image is not None:
+                        measurement_count += 1
+                        self.logger.info(f"第{measurement_count}次测量 (时间: {elapsed_time:.1f}s):")
+                        
+                        # 调用深度距离计算函数
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, self.depthImageCalculateDistance, depth_image
+                        )
+                    else:
+                        self.logger.warning("获取到空的深度图像")
+                        
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"获取深度图像超时 (时间: {elapsed_time:.1f}s)")
+                
+                # 等待1秒后进行下次测量
+                await asyncio.sleep(1.0)
+                
+        except asyncio.CancelledError:
+            self.logger.info("深度距离测试被取消")
+            raise
+        except Exception as e:
+            self.logger.error(f"深度距离测试异常: {str(e)}")
+            raise
+        finally:
+            await self.main.orbbecCameraComponent.depth.unsubscribe(depth_queue)
+            self.logger.info("深度距离测试结束")
+
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
@@ -363,6 +468,9 @@ class ActionComponent(Component):
 
                 if key == "searchForTheTarget":
                     await self.searchForTheTarget()
+
+                if key == "testDepthDistance":
+                    await self.testDepthDistance()
 
             except asyncio.CancelledError:
                 raise
