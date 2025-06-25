@@ -438,11 +438,11 @@ class WaterModel(Model):
 
 
 class FireModel(Model):
-    smoke = Item("烟", Color(0, 0, 255))
     fire = Item("火", Color(0, 0, 255))
+    smoke = Item("烟", Color(0, 0, 255))
 
     def __init__(self, detectionComponent: 'DetectionComponent'):
-        super().__init__("火灾", "fire", [self.smoke, self.fire], detectionComponent)
+        super().__init__("火灾", "fire", [self.fire, self.smoke], detectionComponent)
 
     pass
 

@@ -69,22 +69,65 @@ class ActionComponent(Component):
 
         pass
 
-    async def searchForTheTarget(self):
+    async def searchForTheTarget(self, timeout: float = 30.0):
+        """
+        搜索目标，带超时机制
+        :param timeout: 搜索超时时间（秒），默认30秒
+        """
         queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.source.subscribe(
             asyncio.Queue(maxsize=1))
 
         self.main.motionComponent.disableSpeedAttenuation()
 
+        self.logger.info(f"开始搜索目标，超时时间: {timeout}秒")
+        start_time = asyncio.get_event_loop().time()
+
         try:
+            # 开始前进搜索
             self.main.motionComponent.setVelocity(linear_x=0.2)
 
+            # 搜索循环，带超时检查
+            while True:
+                current_time = asyncio.get_event_loop().time()
+                elapsed_time = current_time - start_time
 
+                # 检查是否超时
+                if elapsed_time >= timeout:
+                    self.logger.warning(f"搜索目标超时: {timeout}秒内未找到目标")
+                    raise Exception(f"搜索目标超时: {timeout}秒内未找到目标")
 
+                # 尝试获取十字准星位置
+                try:
+                    # 设置较短的超时时间来获取位置，避免阻塞太久
+                    crosshair = await asyncio.wait_for(
+                        self.getCrosshairPosition(queue),
+                        timeout=2.0
+                    )
+
+                    if crosshair is not None:
+                        self.logger.info(f"找到目标！十字准星位置: ({crosshair[0]:.1f}, {crosshair[1]:.1f})")
+                        self.logger.info(f"搜索完成，耗时: {elapsed_time:.1f}秒")
+                        return crosshair  # 成功找到目标
+
+                except asyncio.TimeoutError:
+                    # 获取位置超时，继续搜索
+                    self.logger.debug(f"获取位置超时，继续搜索... 已搜索{elapsed_time:.1f}秒")
+
+                # 短暂延迟后继续搜索
+                await asyncio.sleep(0.5)
+
+        except asyncio.CancelledError:
+            self.logger.info("搜索目标被取消")
+            raise
+        except Exception as e:
+            self.logger.error(f"搜索目标异常: {str(e)}")
+            raise
         finally:
+            # 停止运动
+            self.main.motionComponent.stopMotion()
             self.main.motionComponent.enableSpeedAttenuation()
             await self.main.orbbecCameraComponent.source.unsubscribe(queue)
-
-        pass
+            self.logger.info("搜索目标结束，已停止运动")
 
     async def returnVoyage(self):
         '''
@@ -109,7 +152,6 @@ class ActionComponent(Component):
 
         pass
 
-
     async def getCrosshairPosition(self, queue: asyncio.Queue[cv2.typing.MatLike]) -> (float, float) | None:
         """
         获取十字准星位置，进行3次检测并取平均值以提高准确性
@@ -117,39 +159,38 @@ class ActionComponent(Component):
         :return: 十字准星位置 (x, y) 或 None
         """
         valid_positions = []
-        
+
         for attempt in range(3):
             try:
                 mat: cv2.typing.MatLike = await queue.get()
                 crosshair: (float, float) | None = await asyncio.get_event_loop().run_in_executor(
                     None, util.findCrosshair, mat
                 )
-                
+
                 if crosshair is not None:
                     valid_positions.append(crosshair)
                     self.logger.debug(f"第{attempt + 1}次检测: 十字准星位置({crosshair[0]:.1f}, {crosshair[1]:.1f})")
                 else:
                     self.logger.debug(f"第{attempt + 1}次检测: 未找到十字准星")
-                
+
                 # 短暂延迟以获取不同的帧
                 if attempt < 2:
                     await asyncio.sleep(0.1)
-                    
+
             except Exception as e:
                 self.logger.warning(f"第{attempt + 1}次检测异常: {str(e)}")
-        
+
         if not valid_positions:
             self.logger.warning("3次检测均未找到十字准星")
             return None
-        
+
         # 计算平均位置
         avg_x = sum(pos[0] for pos in valid_positions) / len(valid_positions)
         avg_y = sum(pos[1] for pos in valid_positions) / len(valid_positions)
-        
-        self.logger.info(f"位置检测完成: 有效检测{len(valid_positions)}次, 平均位置({avg_x:.1f}, {avg_y:.1f})")
-        
-        return (avg_x, avg_y)
 
+        self.logger.info(f"位置检测完成: 有效检测{len(valid_positions)}次, 平均位置({avg_x:.1f}, {avg_y:.1f})")
+
+        return (avg_x, avg_y)
 
     async def calibration(self):
         await self.main.exclusiveServerReportComponent.openRollingDoor()
@@ -193,7 +234,7 @@ class ActionComponent(Component):
         finally:
             self.main.motionComponent.enableSpeedAttenuation()
             await self.main.orbbecCameraComponent.source.unsubscribe(queue)
-            
+
     async def _adjustVehiclePosition(self, offset_x: float):
         """
         根据十字准星X轴偏差调整车辆位置（只调整垂直于车身的方向）
@@ -238,7 +279,7 @@ class ActionComponent(Component):
         try:
             max_iterations = 40  # 最大调整次数
             center_tolerance = 3  # 中心容差（像素）
-            
+
             self.logger.info("开始姿势调整（仅旋转z轴）...")
 
             for iteration in range(max_iterations):
@@ -251,12 +292,12 @@ class ActionComponent(Component):
 
                 # 图像中心
                 center_x = 350  # 图像中心320 物理中心360
-        
+
                 crosshair_x, crosshair_y = crosshair
                 offset_x = crosshair_x - center_x
-                
+
                 self.logger.info(f"角度校准第{iteration + 1}次: 十字准星X位置{crosshair_x:.1f}, X轴偏差{offset_x:.1f}")
-                
+
                 # 检查是否已经足够接近中心
                 if abs(offset_x) <= center_tolerance:
                     self.logger.info("姿势调整完成：十字准星已接近图像中心")
@@ -288,18 +329,17 @@ class ActionComponent(Component):
             calibration_speed = 0.4  # 中等偏差使用中等速度
         else:
             calibration_speed = 0.3  # 偏差小时使用最慢速度
-        
+
         self.logger.info(f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用角速度{calibration_speed:.2f}")
 
         self.main.motionComponent.stopMotion()
         if abs(offset_x) > 3:
-            if offset_x > 0: 
+            if offset_x > 0:
                 self.main.motionComponent.setVelocity(angular_z=-calibration_speed)
             else:
                 self.main.motionComponent.setVelocity(angular_z=calibration_speed)
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
-
 
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
@@ -320,6 +360,9 @@ class ActionComponent(Component):
 
                 if key == "calibrationByAngle":
                     await self.calibrationByAngle()
+
+                if key == "searchForTheTarget":
+                    await self.searchForTheTarget()
 
             except asyncio.CancelledError:
                 raise
