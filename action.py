@@ -120,10 +120,7 @@ class ActionComponent(Component):
             tolerance = 10  # 像素容差
 
             for iteration in range(max_iterations):
-                mat: cv2.typing.MatLike = await queue.get()
-                crosshair: (float, float) | None = await asyncio.get_event_loop().run_in_executor(
-                    None, util.findCrosshair, mat
-                )
+                crosshair: (float, float) | None = await self.getCrosshairPosition(queue)
 
                 if crosshair is None:
                     self.logger.warning(f"校准第{iteration + 1}次: 未找到十字准星")
@@ -151,6 +148,46 @@ class ActionComponent(Component):
 
         finally:
             await self.main.orbbecCameraComponent.source.unsubscribe(queue)
+
+    async def getCrosshairPosition(self, queue: asyncio.Queue[cv2.typing.MatLike]) -> (float, float) | None:
+        """
+        获取十字准星位置，进行3次检测并取平均值以提高准确性
+        :param queue: 图像队列
+        :return: 十字准星位置 (x, y) 或 None
+        """
+        valid_positions = []
+        
+        for attempt in range(3):
+            try:
+                mat: cv2.typing.MatLike = await queue.get()
+                crosshair: (float, float) | None = await asyncio.get_event_loop().run_in_executor(
+                    None, util.findCrosshair, mat
+                )
+                
+                if crosshair is not None:
+                    valid_positions.append(crosshair)
+                    self.logger.debug(f"第{attempt + 1}次检测: 十字准星位置({crosshair[0]:.1f}, {crosshair[1]:.1f})")
+                else:
+                    self.logger.debug(f"第{attempt + 1}次检测: 未找到十字准星")
+                
+                # 短暂延迟以获取不同的帧
+                if attempt < 2:
+                    await asyncio.sleep(0.1)
+                    
+            except Exception as e:
+                self.logger.warning(f"第{attempt + 1}次检测异常: {str(e)}")
+        
+        if not valid_positions:
+            self.logger.warning("3次检测均未找到十字准星")
+            return None
+        
+        # 计算平均位置
+        avg_x = sum(pos[0] for pos in valid_positions) / len(valid_positions)
+        avg_y = sum(pos[1] for pos in valid_positions) / len(valid_positions)
+        
+        self.logger.info(f"位置检测完成: 有效检测{len(valid_positions)}次, 平均位置({avg_x:.1f}, {avg_y:.1f})")
+        
+        return (avg_x, avg_y)
 
     async def _adjustVehiclePosition(self, offset_x: float):
         """
@@ -198,10 +235,7 @@ class ActionComponent(Component):
             self.logger.info("开始姿势调整（仅旋转z轴）...")
 
             for iteration in range(max_iterations):
-                mat: cv2.typing.MatLike = await queue.get()
-                crosshair: (float, float) | None = await asyncio.get_event_loop().run_in_executor(
-                    None, util.findCrosshair, mat
-                )
+                crosshair: (float, float) | None = await self.getCrosshairPosition(queue)
 
                 if crosshair is None:
                     self.logger.warning(f"姿势调整第{iteration + 1}次: 未找到十字准星")
