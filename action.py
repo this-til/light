@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+from typing import Tuple, Optional
 
 import actionlib
 import cv2
@@ -11,6 +13,19 @@ import util
 from main import Component
 
 import numpy as np
+
+
+@dataclass
+class DepthResult:
+    """深度检测结果数据类"""
+    valid: bool
+    average_distance: Optional[float] = None
+    min_distance: Optional[float] = None
+    max_distance: Optional[float] = None
+    valid_pixels: int = 0
+    total_pixels: int = 0
+    region_shape: Optional[Tuple[int, int]] = None
+    coverage_ratio: float = 0.0
 
 class ActionComponent(Component):
     actionClient = None
@@ -345,10 +360,11 @@ class ActionComponent(Component):
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
 
-    def depthImageCalculateDistance(self, image: cv2.typing.MatLike):
+    def depthImageCalculateDistance(self, image: cv2.typing.MatLike) -> DepthResult:
         """
         计算深度图像中心区域的平均距离
         :param image: 深度图像
+        :return: 包含距离信息的DepthResult对象
         """
         region_size = 0.2  # 20% 的中心区域
 
@@ -366,13 +382,19 @@ class ActionComponent(Component):
         # 创建有效深度值的掩码（排除0和无穷大值）
         valid_mask = (center_region > 0) & (center_region < np.inf) & ~np.isnan(center_region)
 
+        # 初始化结果对象
+        result = DepthResult(
+            valid=False,
+            total_pixels=center_region.size,
+            region_shape=center_region.shape
+        )
+
         if np.any(valid_mask):
             valid_depths = center_region[valid_mask]
             average_depth = np.mean(valid_depths)
             min_depth = np.min(valid_depths)
             max_depth = np.max(valid_depths)
             valid_pixel_count = np.sum(valid_mask)
-            total_pixel_count = center_region.size
             
             # 转换深度值到米（如果需要的话，深度值可能是毫米）
             # 假设深度值已经是毫米，转换为米
@@ -381,15 +403,23 @@ class ActionComponent(Component):
                 min_depth = min_depth / 1000.0
                 max_depth = max_depth / 1000.0
             
+            # 更新结果对象
+            result.valid = True
+            result.average_distance = float(average_depth)
+            result.min_distance = float(min_depth)
+            result.max_distance = float(max_depth)
+            result.valid_pixels = int(valid_pixel_count)
+            result.coverage_ratio = float(valid_pixel_count / center_region.size)
+            
             self.logger.info(f"深度统计 - 区域大小: {center_region.shape}, "
-                           f"有效像素: {valid_pixel_count}/{total_pixel_count}, "
+                           f"有效像素: {valid_pixel_count}/{center_region.size} ({result.coverage_ratio:.1%}), "
                            f"平均距离: {average_depth:.3f}m, "
                            f"最近距离: {min_depth:.3f}m, "
                            f"最远距离: {max_depth:.3f}m")
         else:
             self.logger.warning(f"中心区域({center_region.shape})未检测到有效深度数据")
             
-        return
+        return result
 
     async def testDepthDistance(self, duration: float = 10.0):
         """
@@ -404,6 +434,7 @@ class ActionComponent(Component):
         
         start_time = asyncio.get_event_loop().time()
         measurement_count = 0
+        valid_measurements = []  # 存储有效的测量结果
         
         try:
             while True:
@@ -423,10 +454,21 @@ class ActionComponent(Component):
                         measurement_count += 1
                         self.logger.info(f"第{measurement_count}次测量 (时间: {elapsed_time:.1f}s):")
                         
-                        # 调用深度距离计算函数
-                        await asyncio.get_event_loop().run_in_executor(
+                        # 调用深度距离计算函数并使用返回值
+                        depth_result = await asyncio.get_event_loop().run_in_executor(
                             None, self.depthImageCalculateDistance, depth_image
                         )
+                        
+                        # 使用返回的深度信息
+                        if depth_result.valid:
+                            # 保存有效测量结果用于统计
+                            valid_measurements.append(depth_result)
+                            
+                            self.logger.info(f"测量结果 - 平均距离: {depth_result.average_distance:.3f}m, "
+                                           f"距离范围: {depth_result.min_distance:.3f}m - {depth_result.max_distance:.3f}m, "
+                                           f"数据覆盖率: {depth_result.coverage_ratio:.1%}")
+                        else:
+                            self.logger.warning(f"第{measurement_count}次测量无有效数据")
                     else:
                         self.logger.warning("获取到空的深度图像")
                         
@@ -444,7 +486,136 @@ class ActionComponent(Component):
             raise
         finally:
             await self.main.orbbecCameraComponent.depth.unsubscribe(depth_queue)
+            
+            # 输出测试统计信息
+            if valid_measurements:
+                avg_distances = [m.average_distance for m in valid_measurements]
+                min_distances = [m.min_distance for m in valid_measurements]
+                max_distances = [m.max_distance for m in valid_measurements]
+                coverage_ratios = [m.coverage_ratio for m in valid_measurements]
+                
+                self.logger.info("=== 深度距离测试统计 ===")
+                self.logger.info(f"总测量次数: {measurement_count}, 有效测量: {len(valid_measurements)} ({len(valid_measurements)/measurement_count:.1%})")
+                self.logger.info(f"平均距离统计 - 均值: {np.mean(avg_distances):.3f}m, "
+                               f"最小: {np.min(avg_distances):.3f}m, "
+                               f"最大: {np.max(avg_distances):.3f}m, "
+                               f"标准差: {np.std(avg_distances):.3f}m")
+                self.logger.info(f"最近距离统计 - 均值: {np.mean(min_distances):.3f}m, "
+                               f"最小: {np.min(min_distances):.3f}m, "
+                               f"最大: {np.max(min_distances):.3f}m")
+                self.logger.info(f"最远距离统计 - 均值: {np.mean(max_distances):.3f}m, "
+                               f"最小: {np.min(max_distances):.3f}m, "
+                               f"最大: {np.max(max_distances):.3f}m")
+                self.logger.info(f"数据覆盖率 - 均值: {np.mean(coverage_ratios):.1%}, "
+                               f"最低: {np.min(coverage_ratios):.1%}, "
+                               f"最高: {np.max(coverage_ratios):.1%}")
+                self.logger.info("========================")
+            else:
+                self.logger.warning("测试期间未获得任何有效的深度数据")
+                
             self.logger.info("深度距离测试结束")
+
+    async def moveToTargetDistance(self, target_distance: float, speed: float = 0.1, timeout: float = 30.0):
+        """
+        向前行驶到深度摄像头检测到的指定距离，到达后停车
+        :param target_distance: 目标距离（米）
+        :param speed: 行驶速度，默认0.1m/s
+        :param timeout: 超时时间（秒），默认30秒
+        """
+        self.logger.info(f"开始向前行驶到目标距离: {target_distance:.3f}m (速度: {speed:.2f}m/s)")
+        
+        # 订阅深度图像数据流
+        depth_queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.depth.subscribe(
+            asyncio.Queue(maxsize=1))
+        
+        # 禁用速度衰减以保持稳定的前进速度
+        self.main.motionComponent.disableSpeedAttenuation()
+        
+        start_time = asyncio.get_event_loop().time()
+        measurement_count = 0
+        last_distance = None
+        
+        try:
+            while True:
+                current_time = asyncio.get_event_loop().time()
+                elapsed_time = current_time - start_time
+                
+                # 检查是否超时
+                if elapsed_time >= timeout:
+                    self.logger.warning(f"行驶到目标距离超时: {timeout}秒内未到达目标")
+                    raise Exception(f"行驶到目标距离超时: {timeout}秒内未到达目标距离{target_distance:.3f}m")
+                
+                try:
+                    # 获取深度图像
+                    depth_image = await asyncio.wait_for(depth_queue.get(), timeout=2.0)
+                    
+                    if depth_image is not None:
+                        measurement_count += 1
+                        
+                        # 获取当前距离
+                        depth_result = await asyncio.get_event_loop().run_in_executor(
+                            None, self.depthImageCalculateDistance, depth_image
+                        )
+                        
+                        if depth_result.valid:
+                            current_distance = depth_result.average_distance
+                            last_distance = current_distance
+                            distance_diff = current_distance - target_distance
+                            
+                            self.logger.info(f"第{measurement_count}次测量 (时间: {elapsed_time:.1f}s): "
+                                           f"当前距离: {current_distance:.3f}m, "
+                                           f"目标距离: {target_distance:.3f}m, "
+                                           f"差距: {distance_diff:+.3f}m, "
+                                           f"覆盖率: {depth_result.coverage_ratio:.1%}")
+                            
+                            # 检查是否到达目标距离
+                            if current_distance <= target_distance:
+                                self.logger.info(f"到达目标距离！当前距离: {current_distance:.3f}m <= 目标距离: {target_distance:.3f}m")
+                                self.main.motionComponent.stopMotion()
+                                break
+                            
+                            # 距离控制逻辑 - 只有当距离大于目标时才前进
+                            if distance_diff > 0:
+                                # 当前距离大于目标距离，需要继续前进
+                                self.main.motionComponent.setVelocity(linear_x=speed)
+                            else:
+                                # 当前距离小于等于目标距离，停车
+                                self.main.motionComponent.stopMotion()
+                                self.logger.info(f"已到达目标距离，停车")
+                                break
+                        else:
+                            self.logger.warning(f"无法获取有效的距离数据 (覆盖率: {depth_result.coverage_ratio:.1%})，继续前进...")
+                            self.main.motionComponent.setVelocity(linear_x=speed * 0.5)  # 降低速度
+                    else:
+                        self.logger.warning("获取到空的深度图像")
+                        
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"获取深度图像超时 (时间: {elapsed_time:.1f}s)")
+                    # 超时时继续前进，但降低速度
+                    self.main.motionComponent.setVelocity(linear_x=speed * 0.3)
+                
+                # 短暂延迟
+                await asyncio.sleep(0.2)
+                
+        except asyncio.CancelledError:
+            self.logger.info("行驶到目标距离被取消")
+            raise
+        except Exception as e:
+            self.logger.error(f"行驶到目标距离异常: {str(e)}")
+            raise
+        finally:
+            # 停止运动
+            self.main.motionComponent.stopMotion()
+            self.main.motionComponent.enableSpeedAttenuation()
+            await self.main.orbbecCameraComponent.depth.unsubscribe(depth_queue)
+            
+            if last_distance is not None:
+                self.logger.info(f"行驶结束 - 最终距离: {last_distance:.3f}m, "
+                               f"目标距离: {target_distance:.3f}m, "
+                               f"总测量次数: {measurement_count}, "
+                               f"总耗时: {elapsed_time:.1f}秒")
+            else:
+                self.logger.info("行驶结束 - 未获取到有效距离数据")
 
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
@@ -471,6 +642,27 @@ class ActionComponent(Component):
 
                 if key == "testDepthDistance":
                     await self.testDepthDistance()
+
+                if key == "moveToDistance1m":
+                    await self.moveToTargetDistance(1.0)  # 行驶到1米距离
+
+                if key == "moveToDistance2m":
+                    await self.moveToTargetDistance(2.0)  # 行驶到2米距离
+
+                if key == "moveToDistance0.5m":
+                    await self.moveToTargetDistance(0.5)  # 行驶到0.5米距离
+
+                # 支持自定义距离格式：moveToDistance:1.5 (行驶到1.5米)
+                if key.startswith("moveToDistance:"):
+                    try:
+                        distance_str = key.split(":")[1]
+                        target_distance = float(distance_str)
+                        if 0.1 <= target_distance <= 10.0:  # 限制合理的距离范围
+                            await self.moveToTargetDistance(target_distance)
+                        else:
+                            self.logger.warning(f"目标距离超出范围: {target_distance}m (有效范围: 0.1m - 10.0m)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的距离格式: {key}, 错误: {str(e)}")
 
             except asyncio.CancelledError:
                 raise
