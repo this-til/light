@@ -146,9 +146,6 @@ class ActionComponent(Component):
                 # 根据X轴偏差调整车辆位置
                 await self._adjustVehiclePosition(offset_x)
 
-                # 等待运动完成
-                await asyncio.sleep(1.0)
-
             else:
                 raise Exception(f"校准失败：在{max_iterations}次迭代内未能完成十字准星对中")
 
@@ -162,11 +159,11 @@ class ActionComponent(Component):
         """
 
         if abs(offset_x) > 100:
-            calibration_speed = 0.1  # 偏差大时使用较快速度
+            calibration_speed = 0.03  # 偏差大时使用较快速度
         elif abs(offset_x) > 50:
-            calibration_speed = 0.2  # 中等偏差使用中等速度
+            calibration_speed = 0.05  # 中等偏差使用中等速度
         else:
-            calibration_speed = 0.3  # 偏差小时使用最慢速度
+            calibration_speed = 0.1  # 偏差小时使用最慢速度
 
         self.logger.info(f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用速度{calibration_speed:.2f}")
 
@@ -181,7 +178,7 @@ class ActionComponent(Component):
             else:
                 # 十字准星在左侧，车需要向左移动（正Y方向）
                 self.main.motionComponent.setVelocity(linear_y=calibration_speed)
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
 
     async def calibrationByAngle(self):
@@ -301,7 +298,7 @@ class ActionComponent(Component):
                 if key == "close":
                     await self.main.exclusiveServerReportComponent.closeRollingDoor()
 
-                if key == "c":
+                if key == "calibration":
                     await self.calibration()
 
                 if key == "calibrationByAngle":
