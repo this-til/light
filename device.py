@@ -25,6 +25,7 @@ class CommandType:
 SetLightGear: CommandType = CommandType("SetLightGear", "uint")
 SetLightSwitch: CommandType = CommandType("LightModeSwitch", "uint")
 RollingDoor: CommandType = CommandType("RollingDoor", "uint")
+UavBaseStationCover: CommandType = CommandType("UavBaseStationCover", "uint")
 
 
 class Command:
@@ -171,6 +172,10 @@ class DeviceComponent(Component):
                     pass
 
                 if event.key == "Device.RollingDoor":
+                    automatic: bool = event.value == "true"
+                    await self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
+
+                if event.key == "UavBaseStation.Cover":
                     automatic: bool = event.value == "true"
                     await self.sendCommand(Command(RollingDoor, 1 if automatic else 0))
 
