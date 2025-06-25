@@ -29,7 +29,7 @@
     "NMS_THRESH": 0.5
   },
   "MotionComponent": {
-    "speed": 0.5
+    "speed": 0.3
   },
   "LaserRadarComponent": {
     "roscarMappingLaunchPath": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_mapping.launch"
