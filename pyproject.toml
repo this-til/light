@@ -59,6 +59,7 @@ dependencies = [
     
     # 音频处理
     "pyaudio>=0.2.11",
+    "pygame>=2.1.0",
     
     # 串口通信
     "pyserial>=3.5",
