@@ -65,6 +65,7 @@ class Carousel(Component):
                 # 启动轮播循环
                 asyncio.create_task(self.carousel_loop())
                 self.logger.info(f"图像轮播已启动，共加载 {len(self.images)} 张图片")
+                self.logger.info(f"配置信息 - 间隔: {self.interval}s, 动画时长: {self.animation_duration}s")
             else:
                 self.logger.warning("未找到图像文件，轮播未启动")
                 
@@ -113,33 +114,13 @@ class Carousel(Component):
                 self.logger.error(f"加载图像 {image_file} 失败: {e}")
                 
     def scale_image_to_screen(self, image: pygame.Surface, screen_size: tuple) -> pygame.Surface:
-        """缩放图像以适应屏幕，保持宽高比"""
+        """缩放图像以铺满屏幕，拉伸到屏幕大小"""
         screen_width, screen_height = screen_size
-        image_width, image_height = image.get_size()
         
-        # 计算缩放比例
-        scale_x = screen_width / image_width
-        scale_y = screen_height / image_height
-        scale = min(scale_x, scale_y)  # 保持宽高比
+        # 直接将图像拉伸到屏幕大小，不保持宽高比
+        scaled_image = pygame.transform.scale(image, (screen_width, screen_height))
         
-        # 计算新尺寸
-        new_width = int(image_width * scale)
-        new_height = int(image_height * scale)
-        
-        # 缩放图像
-        scaled_image = pygame.transform.scale(image, (new_width, new_height))
-        
-        # 创建居中的Surface
-        centered_surface = pygame.Surface(screen_size)
-        centered_surface.fill((0, 0, 0))  # 黑色背景
-        
-        # 计算居中位置
-        x = (screen_width - new_width) // 2
-        y = (screen_height - new_height) // 2
-        
-        centered_surface.blit(scaled_image, (x, y))
-        
-        return centered_surface
+        return scaled_image
         
     async def carousel_loop(self):
         """主轮播循环"""
@@ -151,9 +132,10 @@ class Carousel(Component):
                 current_time = time.time()
                 if self.is_animating:
                     self.update_animation(current_time)
-
+                    
                 # 检查是否需要自动切换图像
-                if not self.is_animating and current_time - self.last_switch_time >= self.interval:
+                interval = self.interval if self.interval and self.interval > 0 else 3.0
+                if not self.is_animating and current_time - self.last_switch_time >= interval:
                     self.start_transition_to_next()
                     self.last_switch_time = current_time
 
@@ -235,7 +217,11 @@ class Carousel(Component):
     def update_animation(self, current_time):
         """更新动画进度"""
         elapsed = current_time - self.animation_start_time
-        self.animation_progress = min(elapsed / self.animation_duration, 1.0)
+        
+        # 安全检查动画持续时间
+        duration = self.animation_duration if self.animation_duration and self.animation_duration > 0 else 0.5
+        
+        self.animation_progress = min(elapsed / duration, 1.0)
         
         if self.animation_progress >= 1.0:
             # 动画完成
