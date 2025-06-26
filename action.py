@@ -3,7 +3,7 @@ from __future__ import annotations
 import pyttsx3
 import asyncio
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Callable, Awaitable
 
 import actionlib
 import cv2
@@ -11,6 +11,7 @@ import rospy
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
 import util
+from detection import Cell
 from main import Component
 
 import numpy as np
@@ -27,6 +28,7 @@ class DepthResult:
     total_pixels: int = 0
     region_shape: Optional[Tuple[int, int]] = None
     coverage_ratio: float = 0.0
+
 
 class ActionComponent(Component):
     actionClient = None
@@ -86,10 +88,19 @@ class ActionComponent(Component):
 
         pass
 
-    async def searchForTheTarget(self, timeout: float = 30.0):
+    async def searchWithCondition(
+        self, 
+        detectorFunc: Callable[[cv2.typing.MatLike, float], Awaitable[Tuple[bool, str, bool]]], 
+        targetName: str = "目标", 
+        timeout: float = 30.0, 
+        searchSpeed: float = 0.2
+    ):
         """
-        搜索目标，带超时机制
+        通用搜索函数，根据检测器函数搜索目标
+        :param detectorFunc: 检测器函数，接收(mat: MatLike, elapsedTime: float)，返回(found: bool, description: str, shouldContinue: bool)
+        :param targetName: 目标名称，用于日志记录
         :param timeout: 搜索超时时间（秒），默认30秒
+        :param searchSpeed: 搜索时的前进速度，默认0.2m/s
         """
         queue: asyncio.Queue[
             cv2.typing.MatLike] = await self.main.orbbecCameraComponent.brightnessNormalizationSource.subscribe(
@@ -97,55 +108,95 @@ class ActionComponent(Component):
 
         self.main.motionComponent.disableSpeedAttenuation()
 
-        self.logger.info(f"开始搜索目标，超时时间: {timeout}秒")
-        start_time = asyncio.get_event_loop().time()
+        self.logger.info(f"开始搜索{targetName}，超时时间: {timeout}秒，搜索速度: {searchSpeed}m/s")
+        startTime = asyncio.get_event_loop().time()
 
         try:
             # 开始前进搜索
-            self.main.motionComponent.setVelocity(linear_x=0.2)
+            self.main.motionComponent.setVelocity(linear_x=searchSpeed)
 
             # 搜索循环，带超时检查
             while True:
-                current_time = asyncio.get_event_loop().time()
-                elapsed_time = current_time - start_time
+                currentTime = asyncio.get_event_loop().time()
+                elapsedTime = currentTime - startTime
 
                 # 检查是否超时
-                if elapsed_time >= timeout:
-                    self.logger.warning(f"搜索目标超时: {timeout}秒内未找到目标")
-                    raise Exception(f"搜索目标超时: {timeout}秒内未找到目标")
+                if elapsedTime >= timeout:
+                    self.logger.warning(f"搜索{targetName}超时: {timeout}秒内未找到{targetName}")
+                    raise Exception(f"搜索{targetName}超时: {timeout}秒内未找到{targetName}")
 
-                # 尝试获取十字准星位置
-                try:
-                    # 设置较短的超时时间来获取位置，避免阻塞太久
-                    crosshair = await asyncio.wait_for(
-                        self.getCrosshairPosition(queue),
-                        timeout=2.0
-                    )
+                mat = await queue.get()
 
-                    if crosshair is not None:
-                        self.logger.info(f"找到目标！十字准星位置: ({crosshair[0]:.1f}, {crosshair[1]:.1f})")
-                        self.logger.info(f"搜索完成，耗时: {elapsed_time:.1f}秒")
-                        return crosshair  # 成功找到目标
+                # 使用检测器函数进行检测和判断
+                found, description, shouldContinue = await detectorFunc(mat, elapsedTime)
+                
+                if found:
+                    self.logger.info(f"找到{targetName}！{description}")
+                    break
+                
+                if not shouldContinue:
+                    self.logger.warning(f"检测器要求停止搜索: {description}")
+                    break
 
-                except asyncio.TimeoutError:
-                    # 获取位置超时，继续搜索
-                    self.logger.debug(f"获取位置超时，继续搜索... 已搜索{elapsed_time:.1f}秒")
-
-                # 短暂延迟后继续搜索
-                await asyncio.sleep(0.5)
+                # 未找到目标，继续搜索
+                self.logger.debug(f"未找到{targetName}，继续搜索... 已搜索{elapsedTime:.1f}秒")
 
         except asyncio.CancelledError:
-            self.logger.info("搜索目标被取消")
+            self.logger.info(f"搜索{targetName}被取消")
             raise
         except Exception as e:
-            self.logger.error(f"搜索目标异常: {str(e)}")
+            self.logger.error(f"搜索{targetName}异常: {str(e)}")
             raise
         finally:
             # 停止运动
             self.main.motionComponent.stopMotion()
             self.main.motionComponent.enableSpeedAttenuation()
             await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
-            self.logger.info("搜索目标结束，已停止运动")
+            self.logger.info(f"搜索{targetName}结束，已停止运动")
+
+    async def searchFire(self, timeout: float = 30.0):
+        """
+        搜索火源目标，带超时机制
+        :param timeout: 搜索超时时间（秒），默认30秒
+        """
+        async def fireDetector(mat, elapsedTime):
+            """
+            火源检测器函数
+            :param mat: 输入图像
+            :param elapsedTime: 已搜索时间
+            :return: (是否找到, 描述信息, 是否继续搜索)
+            """
+            try:
+                # 运行检测
+                detectionResult = await self.main.detectionComponent.runDetection(
+                    mat,
+                    [self.main.detectionComponent.fireModel]
+                )
+
+                # 获取检测结果
+                itemList: list[Cell] = detectionResult.cellMap.get(self.main.detectionComponent.fireModel, None)
+
+                if itemList is None or len(itemList) <= 0:
+                    return False, f"未检测到任何对象 (已搜索{elapsedTime:.1f}秒)", True
+
+                # 查找火源
+                for e in itemList:
+                    if e.item == self.main.detectionComponent.fireModel.fire:
+                        return True, f"检测到火源，位置: ({e.x}, {e.y}), 置信度: {e.confidence:.2f}", True
+
+                return False, f"检测到{len(itemList)}个对象，但无火源 (已搜索{elapsedTime:.1f}秒)", True
+
+            except Exception as ex:
+                # 检测异常时继续搜索
+                return False, f"检测异常: {str(ex)}", True
+
+        # 调用通用搜索函数
+        await self.searchWithCondition(
+            detectorFunc=fireDetector,
+            targetName="火源",
+            timeout=timeout,
+            searchSpeed=0.2
+        )
 
     async def returnVoyage(self):
         '''
@@ -370,7 +421,7 @@ class ActionComponent(Component):
         region_size = 0.2  # 20% 的中心区域
 
         height, width = image.shape
-        
+
         # 计算中心区域的边界
         x_start = int(width * (0.5 - region_size / 2))
         x_end = int(width * (0.5 + region_size / 2))
@@ -396,14 +447,14 @@ class ActionComponent(Component):
             min_depth = np.min(valid_depths)
             max_depth = np.max(valid_depths)
             valid_pixel_count = np.sum(valid_mask)
-            
+
             # 转换深度值到米（如果需要的话，深度值可能是毫米）
             # 假设深度值已经是毫米，转换为米
             if average_depth > 100:  # 如果深度值很大，可能是毫米单位
                 average_depth = average_depth / 1000.0
                 min_depth = min_depth / 1000.0
                 max_depth = max_depth / 1000.0
-            
+
             # 更新结果对象
             result.valid = True
             result.average_distance = float(average_depth)
@@ -411,15 +462,15 @@ class ActionComponent(Component):
             result.max_distance = float(max_depth)
             result.valid_pixels = int(valid_pixel_count)
             result.coverage_ratio = float(valid_pixel_count / center_region.size)
-            
+
             self.logger.info(f"深度统计 - 区域大小: {center_region.shape}, "
-                           f"有效像素: {valid_pixel_count}/{center_region.size} ({result.coverage_ratio:.1%}), "
-                           f"平均距离: {average_depth:.3f}m, "
-                           f"最近距离: {min_depth:.3f}m, "
-                           f"最远距离: {max_depth:.3f}m")
+                             f"有效像素: {valid_pixel_count}/{center_region.size} ({result.coverage_ratio:.1%}), "
+                             f"平均距离: {average_depth:.3f}m, "
+                             f"最近距离: {min_depth:.3f}m, "
+                             f"最远距离: {max_depth:.3f}m")
         else:
             self.logger.warning(f"中心区域({center_region.shape})未检测到有效深度数据")
-            
+
         return result
 
     async def testDepthDistance(self, duration: float = 10.0):
@@ -428,57 +479,57 @@ class ActionComponent(Component):
         :param duration: 测试持续时间（秒），默认10秒
         """
         self.logger.info(f"开始深度距离测试，持续时间: {duration}秒")
-        
+
         # 订阅深度图像数据流
         depth_queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.depth.subscribe(
             asyncio.Queue(maxsize=1))
-        
+
         start_time = asyncio.get_event_loop().time()
         measurement_count = 0
         valid_measurements = []  # 存储有效的测量结果
-        
+
         try:
             while True:
                 current_time = asyncio.get_event_loop().time()
                 elapsed_time = current_time - start_time
-                
+
                 # 检查是否已经达到测试时间
                 if elapsed_time >= duration:
                     self.logger.info(f"深度距离测试完成，总计测量{measurement_count}次，耗时{elapsed_time:.1f}秒")
                     break
-                
+
                 try:
                     # 获取深度图像，设置2秒超时
                     depth_image = await asyncio.wait_for(depth_queue.get(), timeout=2.0)
-                    
+
                     if depth_image is not None:
                         measurement_count += 1
                         self.logger.info(f"第{measurement_count}次测量 (时间: {elapsed_time:.1f}s):")
-                        
+
                         # 调用深度距离计算函数并使用返回值
                         depth_result = await asyncio.get_event_loop().run_in_executor(
                             None, self.depthImageCalculateDistance, depth_image
                         )
-                        
+
                         # 使用返回的深度信息
                         if depth_result.valid:
                             # 保存有效测量结果用于统计
                             valid_measurements.append(depth_result)
-                            
+
                             self.logger.info(f"测量结果 - 平均距离: {depth_result.average_distance:.3f}m, "
-                                           f"距离范围: {depth_result.min_distance:.3f}m - {depth_result.max_distance:.3f}m, "
-                                           f"数据覆盖率: {depth_result.coverage_ratio:.1%}")
+                                             f"距离范围: {depth_result.min_distance:.3f}m - {depth_result.max_distance:.3f}m, "
+                                             f"数据覆盖率: {depth_result.coverage_ratio:.1%}")
                         else:
                             self.logger.warning(f"第{measurement_count}次测量无有效数据")
                     else:
                         self.logger.warning("获取到空的深度图像")
-                        
+
                 except asyncio.TimeoutError:
                     self.logger.warning(f"获取深度图像超时 (时间: {elapsed_time:.1f}s)")
-                
+
                 # 等待1秒后进行下次测量
                 await asyncio.sleep(1.0)
-                
+
         except asyncio.CancelledError:
             self.logger.info("深度距离测试被取消")
             raise
@@ -487,33 +538,34 @@ class ActionComponent(Component):
             raise
         finally:
             await self.main.orbbecCameraComponent.depth.unsubscribe(depth_queue)
-            
+
             # 输出测试统计信息
             if valid_measurements:
                 avg_distances = [m.average_distance for m in valid_measurements]
                 min_distances = [m.min_distance for m in valid_measurements]
                 max_distances = [m.max_distance for m in valid_measurements]
                 coverage_ratios = [m.coverage_ratio for m in valid_measurements]
-                
+
                 self.logger.info("=== 深度距离测试统计 ===")
-                self.logger.info(f"总测量次数: {measurement_count}, 有效测量: {len(valid_measurements)} ({len(valid_measurements)/measurement_count:.1%})")
+                self.logger.info(
+                    f"总测量次数: {measurement_count}, 有效测量: {len(valid_measurements)} ({len(valid_measurements) / measurement_count:.1%})")
                 self.logger.info(f"平均距离统计 - 均值: {np.mean(avg_distances):.3f}m, "
-                               f"最小: {np.min(avg_distances):.3f}m, "
-                               f"最大: {np.max(avg_distances):.3f}m, "
-                               f"标准差: {np.std(avg_distances):.3f}m")
+                                 f"最小: {np.min(avg_distances):.3f}m, "
+                                 f"最大: {np.max(avg_distances):.3f}m, "
+                                 f"标准差: {np.std(avg_distances):.3f}m")
                 self.logger.info(f"最近距离统计 - 均值: {np.mean(min_distances):.3f}m, "
-                               f"最小: {np.min(min_distances):.3f}m, "
-                               f"最大: {np.max(min_distances):.3f}m")
+                                 f"最小: {np.min(min_distances):.3f}m, "
+                                 f"最大: {np.max(min_distances):.3f}m")
                 self.logger.info(f"最远距离统计 - 均值: {np.mean(max_distances):.3f}m, "
-                               f"最小: {np.min(max_distances):.3f}m, "
-                               f"最大: {np.max(max_distances):.3f}m")
+                                 f"最小: {np.min(max_distances):.3f}m, "
+                                 f"最大: {np.max(max_distances):.3f}m")
                 self.logger.info(f"数据覆盖率 - 均值: {np.mean(coverage_ratios):.1%}, "
-                               f"最低: {np.min(coverage_ratios):.1%}, "
-                               f"最高: {np.max(coverage_ratios):.1%}")
+                                 f"最低: {np.min(coverage_ratios):.1%}, "
+                                 f"最高: {np.max(coverage_ratios):.1%}")
                 self.logger.info("========================")
             else:
                 self.logger.warning("测试期间未获得任何有效的深度数据")
-                
+
             self.logger.info("深度距离测试结束")
 
     async def moveToTargetDistance(self, target_distance: float, speed: float = 0.1, timeout: float = 30.0):
@@ -524,57 +576,58 @@ class ActionComponent(Component):
         :param timeout: 超时时间（秒），默认30秒
         """
         self.logger.info(f"开始向前行驶到目标距离: {target_distance:.3f}m (速度: {speed:.2f}m/s)")
-        
+
         # 订阅深度图像数据流
         depth_queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.depth.subscribe(
             asyncio.Queue(maxsize=1))
-        
+
         # 禁用速度衰减以保持稳定的前进速度
         self.main.motionComponent.disableSpeedAttenuation()
-        
+
         start_time = asyncio.get_event_loop().time()
         measurement_count = 0
         last_distance = None
-        
+
         try:
             while True:
                 current_time = asyncio.get_event_loop().time()
                 elapsed_time = current_time - start_time
-                
+
                 # 检查是否超时
                 if elapsed_time >= timeout:
                     self.logger.warning(f"行驶到目标距离超时: {timeout}秒内未到达目标")
                     raise Exception(f"行驶到目标距离超时: {timeout}秒内未到达目标距离{target_distance:.3f}m")
-                
+
                 try:
                     # 获取深度图像
                     depth_image = await asyncio.wait_for(depth_queue.get(), timeout=2.0)
-                    
+
                     if depth_image is not None:
                         measurement_count += 1
-                        
+
                         # 获取当前距离
                         depth_result = await asyncio.get_event_loop().run_in_executor(
                             None, self.depthImageCalculateDistance, depth_image
                         )
-                        
+
                         if depth_result.valid:
                             current_distance = depth_result.average_distance
                             last_distance = current_distance
                             distance_diff = current_distance - target_distance
-                            
+
                             self.logger.info(f"第{measurement_count}次测量 (时间: {elapsed_time:.1f}s): "
-                                           f"当前距离: {current_distance:.3f}m, "
-                                           f"目标距离: {target_distance:.3f}m, "
-                                           f"差距: {distance_diff:+.3f}m, "
-                                           f"覆盖率: {depth_result.coverage_ratio:.1%}")
-                            
+                                             f"当前距离: {current_distance:.3f}m, "
+                                             f"目标距离: {target_distance:.3f}m, "
+                                             f"差距: {distance_diff:+.3f}m, "
+                                             f"覆盖率: {depth_result.coverage_ratio:.1%}")
+
                             # 检查是否到达目标距离
                             if current_distance <= target_distance:
-                                self.logger.info(f"到达目标距离！当前距离: {current_distance:.3f}m <= 目标距离: {target_distance:.3f}m")
+                                self.logger.info(
+                                    f"到达目标距离！当前距离: {current_distance:.3f}m <= 目标距离: {target_distance:.3f}m")
                                 self.main.motionComponent.stopMotion()
                                 break
-                            
+
                             # 距离控制逻辑 - 只有当距离大于目标时才前进
                             if distance_diff > 0:
                                 # 当前距离大于目标距离，需要继续前进
@@ -585,19 +638,20 @@ class ActionComponent(Component):
                                 self.logger.info(f"已到达目标距离，停车")
                                 break
                         else:
-                            self.logger.warning(f"无法获取有效的距离数据 (覆盖率: {depth_result.coverage_ratio:.1%})，继续前进...")
+                            self.logger.warning(
+                                f"无法获取有效的距离数据 (覆盖率: {depth_result.coverage_ratio:.1%})，继续前进...")
                             self.main.motionComponent.setVelocity(linear_x=speed * 0.5)  # 降低速度
                     else:
                         self.logger.warning("获取到空的深度图像")
-                        
+
                 except asyncio.TimeoutError:
                     self.logger.warning(f"获取深度图像超时 (时间: {elapsed_time:.1f}s)")
                     # 超时时继续前进，但降低速度
                     self.main.motionComponent.setVelocity(linear_x=speed * 0.3)
-                
+
                 # 短暂延迟
                 await asyncio.sleep(0.2)
-                
+
         except asyncio.CancelledError:
             self.logger.info("行驶到目标距离被取消")
             raise
@@ -609,12 +663,12 @@ class ActionComponent(Component):
             self.main.motionComponent.stopMotion()
             self.main.motionComponent.enableSpeedAttenuation()
             await self.main.orbbecCameraComponent.depth.unsubscribe(depth_queue)
-            
+
             if last_distance is not None:
                 self.logger.info(f"行驶结束 - 最终距离: {last_distance:.3f}m, "
-                               f"目标距离: {target_distance:.3f}m, "
-                               f"总测量次数: {measurement_count}, "
-                               f"总耗时: {elapsed_time:.1f}秒")
+                                 f"目标距离: {target_distance:.3f}m, "
+                                 f"总测量次数: {measurement_count}, "
+                                 f"总耗时: {elapsed_time:.1f}秒")
             else:
                 self.logger.info("行驶结束 - 未获取到有效距离数据")
 
@@ -638,8 +692,8 @@ class ActionComponent(Component):
                 if key == "calibrationByAngle":
                     await self.calibrationByAngle()
 
-                if key == "searchForTheTarget":
-                    await self.searchForTheTarget()
+                if key == "searchFire":
+                    await self.searchFire()
 
                 if key == "testDepthDistance":
                     await self.testDepthDistance()
