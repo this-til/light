@@ -92,8 +92,8 @@
     "images_folder": "images",
     "interval": 3.0,
     "fullscreen": true,
-    "width": 1920,
-    "height": 1080,
-    "fade_duration": 0.5
+    "width": 400,
+    "height": 800,
+    "animation_duration": 0.5
   }
 }
