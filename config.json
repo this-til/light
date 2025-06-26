@@ -88,7 +88,7 @@
     "soundSource" :  "/home/elf/light/sound"
   },
   "Carousel": {
-    "enable": false,
+    "enable": true,
     "images_folder": "images",
     "interval": 3.0,
     "fullscreen": true,
