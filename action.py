@@ -31,18 +31,18 @@ class DepthResult:
 
 
 class ActionComponent(Component):
-    actionClient : actionlib.SimpleActionClient | None = None
+    actionClient: actionlib.SimpleActionClient | None = None
 
-    mappingLock : asyncio.Lock = asyncio.Lock()
-    
+    mappingLock: asyncio.Lock = asyncio.Lock()
+
     async def awakeInit(self):
         await super().awakeInit()
 
-        #self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
-        #self.actionClient.wait_for_server()
+        # self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
+        # self.actionClient.wait_for_server()
 
         asyncio.create_task(self.instructionLoop())
-        
+
     async def startMapping(self):
         if self.actionClient is not None:
             return
@@ -51,7 +51,7 @@ class ActionComponent(Component):
                 return
             self.main.rosAccessComponent.mapLaunchFile.start()
             self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
-            #self.actionClient.wait_for_server()
+            # self.actionClient.wait_for_server()
             await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_server)
 
     async def closeMapping(self):
@@ -62,32 +62,46 @@ class ActionComponent(Component):
                 return
             self.main.rosAccessComponent.mapLaunchFile.shutdown()
             self.actionClient = None
-        
-    async def actionNav(self, x_axle=1, y_axle=0, x=0, y=0, z=0, w=0):
-        
+
+    async def actionNav(self, target_pose: util.Pose = None, x_axle=1, y_axle=0, x=0, y=0, z=0, w=0):
+        """导航到目标位置 - 支持 Pose 对象和单独参数"""
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "map"
         goal.target_pose.header.stamp = rospy.Time.now()
-        
-        # X轴
-        goal.target_pose.pose.position.x = x_axle
-        # Y轴
-        goal.target_pose.pose.position.y = y_axle
-        # Z轴
-        goal.target_pose.pose.position.z = 0.0
 
-        # 朝向
-        goal.target_pose.pose.orientation.x = x
-        goal.target_pose.pose.orientation.y = y
-        goal.target_pose.pose.orientation.z = z
-        goal.target_pose.pose.orientation.w = w
+        if target_pose is not None:
+            # 使用 Pose 对象
+            goal.target_pose.pose.position.x = target_pose.position.x
+            goal.target_pose.pose.position.y = target_pose.position.y
+            goal.target_pose.pose.position.z = target_pose.position.z
+            goal.target_pose.pose.orientation.x = target_pose.orientation.x
+            goal.target_pose.pose.orientation.y = target_pose.orientation.y
+            goal.target_pose.pose.orientation.z = target_pose.orientation.z
+            goal.target_pose.pose.orientation.w = target_pose.orientation.w
+            self.logger.info(f"开始导航到目标位置: {target_pose}")
+        else:
+            # 使用单独参数（向后兼容）
+            goal.target_pose.pose.position.x = x_axle
+            goal.target_pose.pose.position.y = y_axle
+            goal.target_pose.pose.position.z = 0.0
+            goal.target_pose.pose.orientation.x = x
+            goal.target_pose.pose.orientation.y = y
+            goal.target_pose.pose.orientation.z = z
+            goal.target_pose.pose.orientation.w = w
+            self.logger.info(f"开始导航到位置: ({x_axle}, {y_axle})")
+
         self.actionClient.send_goal(goal)
-        self.logger.info("开始导航")
-
         self.actionClient.wait_for_result()
-        #await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result)
+        # await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result)
 
         return self.actionClient.get_state()
+    
+    async def actionNavToPosition(self, position: util.V3, orientation: util.Quaternion = None):
+        """导航到指定位置和朝向"""
+        if orientation is None:
+            orientation = util.Quaternion.identity()
+        target_pose = util.Pose(position, orientation)
+        return await self.actionNav(target_pose)
 
     async def exitCabin(self):
         '''
@@ -97,37 +111,19 @@ class ActionComponent(Component):
 
         await self.main.exclusiveServerReportComponent.openRollingDoor()
 
-        start_time = asyncio.get_event_loop().time()
-        
-        while asyncio.get_event_loop().time() - start_time < 4:
-            self.main.motionComponent.setVelocity(linear_x=-0.2)
-            await asyncio.sleep(0.05)
-            pass
-        
-        self.main.motionComponent.stopMotion()
-        
-        #self.main.laserRadarComponent.start()
-
-        completed: bool = False
-
-        for retryCount in range(3):
-            if await self.actionNav(-1, 0, 0, 0, 0, 0) == actionlib.GoalStatus.SUCCEEDED:
-                completed = True
-                break
-
-        if not completed:
-            raise Exception("the exitCabin is failed")
+        velocity = util.Velocity.create(linear_x=-0.2)
+        await self.main.motionComponent.motionTime(velocity=velocity, time=4)
 
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
         pass
 
     async def searchWithCondition(
-        self, 
-        detectorFunc: Callable[[cv2.typing.MatLike, float], Awaitable[Tuple[bool, str, bool]]], 
-        targetName: str = "目标", 
-        timeout: float = 30.0, 
-        searchSpeed: float = 0.2
+            self,
+            detectorFunc: Callable[[cv2.typing.MatLike, float], Awaitable[Tuple[bool, str, bool]]],
+            targetName: str = "目标",
+            timeout: float = 30.0,
+            searchSpeed: float = 0.2
     ):
         """
         通用搜索函数，根据检测器函数搜索目标
@@ -163,11 +159,11 @@ class ActionComponent(Component):
 
                 # 使用检测器函数进行检测和判断
                 found, description, shouldContinue = await detectorFunc(mat, elapsedTime)
-                
+
                 if found:
                     self.logger.info(f"找到{targetName}！{description}")
                     break
-                
+
                 if not shouldContinue:
                     self.logger.warning(f"检测器要求停止搜索: {description}")
                     break
@@ -193,6 +189,7 @@ class ActionComponent(Component):
         搜索火源目标，带超时机制
         :param timeout: 搜索超时时间（秒），默认30秒
         """
+
         async def fireDetector(mat, elapsedTime):
             """
             火源检测器函数
@@ -214,9 +211,11 @@ class ActionComponent(Component):
                     return False, f"未检测到任何对象 (已搜索{elapsedTime:.1f}秒)", True
 
                 # 查找火源
+                e: Cell
                 for e in itemList:
+                    box: util.Box = e.box
                     if e.item == self.main.detectionComponent.fireModel.fire:
-                        return True, f"检测到火源，位置: ({e.x}, {e.y}), 置信度: {e.confidence:.2f}", True
+                        return True, f"检测到火源，位置: ({box.x}, {box.y}), 置信度: {e.probability:.2f}", True
 
                 return False, f"检测到{len(itemList)}个对象，但无火源 (已搜索{elapsedTime:.1f}秒)", True
 
@@ -255,11 +254,11 @@ class ActionComponent(Component):
 
         pass
 
-    async def getCrosshairPosition(self, queue: asyncio.Queue[cv2.typing.MatLike]) -> (float, float) | None:
+    async def getCrosshairPosition(self, queue: asyncio.Queue[cv2.typing.MatLike]) -> util.V2 | None:
         """
         获取十字准星位置，进行3次检测并取平均值以提高准确性
         :param queue: 图像队列
-        :return: 十字准星位置 (x, y) 或 None
+        :return: 十字准星位置 V2 或 None
         """
         valid_positions = []
 
@@ -271,8 +270,9 @@ class ActionComponent(Component):
                 )
 
                 if crosshair is not None:
-                    valid_positions.append(crosshair)
-                    self.logger.debug(f"第{attempt + 1}次检测: 十字准星位置({crosshair[0]:.1f}, {crosshair[1]:.1f})")
+                    crosshair_v2 = util.V2(crosshair[0], crosshair[1])
+                    valid_positions.append(crosshair_v2)
+                    self.logger.debug(f"第{attempt + 1}次检测: 十字准星位置{crosshair_v2}")
                 else:
                     self.logger.debug(f"第{attempt + 1}次检测: 未找到十字准星")
 
@@ -288,12 +288,13 @@ class ActionComponent(Component):
             return None
 
         # 计算平均位置
-        avg_x = sum(pos[0] for pos in valid_positions) / len(valid_positions)
-        avg_y = sum(pos[1] for pos in valid_positions) / len(valid_positions)
+        avg_x = sum(pos.x for pos in valid_positions) / len(valid_positions)
+        avg_y = sum(pos.y for pos in valid_positions) / len(valid_positions)
+        
+        avg_position = util.V2(avg_x, avg_y)
+        self.logger.info(f"位置检测完成: 有效检测{len(valid_positions)}次, 平均位置{avg_position}")
 
-        self.logger.info(f"位置检测完成: 有效检测{len(valid_positions)}次, 平均位置({avg_x:.1f}, {avg_y:.1f})")
-
-        return (avg_x, avg_y)
+        return avg_position
 
     async def calibration(self):
         await self.main.exclusiveServerReportComponent.openRollingDoor()
@@ -309,7 +310,7 @@ class ActionComponent(Component):
             tolerance = 3  # 像素容差
 
             for iteration in range(max_iterations):
-                crosshair: (float, float) | None = await self.getCrosshairPosition(queue)
+                crosshair: util.V2 | None = await self.getCrosshairPosition(queue)
 
                 if crosshair is None:
                     self.logger.warning(f"校准第{iteration + 1}次: 未找到十字准星")
@@ -317,20 +318,21 @@ class ActionComponent(Component):
                     continue
 
                 center_x = 350  # 图像中心320 物理中心360
+                center = util.V2(center_x, 0)  # Y轴不重要，主要关注X轴
 
-                # 计算X轴偏差（只关注垂直于车身的标识）
-                crosshair_x, crosshair_y = crosshair
-                offset_x = crosshair_x - center_x
+                # 计算偏差（只关注垂直于车身的标识）
+                offset = crosshair - center
+                offset_x = offset.x
 
-                self.logger.info(f"校准第{iteration + 1}次: 十字准星X位置{crosshair_x:.1f}, X轴偏差{offset_x:.1f}")
+                self.logger.info(f"校准第{iteration + 1}次: 十字准星位置{crosshair}, X轴偏差{offset_x:.1f}")
 
                 # 检查X轴是否已经足够接近中心
                 if abs(offset_x) <= tolerance:
                     self.logger.info("校准完成：十字准星X轴已接近图像中心")
                     break
 
-                # 根据X轴偏差调整车辆位置
-                await self._adjustVehiclePosition(offset_x)
+                # 根据偏差调整车辆位置
+                await self._adjustVehiclePosition(offset)
 
             else:
                 raise Exception(f"校准失败：在{max_iterations}次迭代内未能完成十字准星对中")
@@ -339,12 +341,13 @@ class ActionComponent(Component):
             self.main.motionComponent.enableSpeedAttenuation()
             await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
 
-    async def _adjustVehiclePosition(self, offset_x: float):
+    async def _adjustVehiclePosition(self, offset: util.V2):
         """
-        根据十字准星X轴偏差调整车辆位置（只调整垂直于车身的方向）
-        :param offset_x: X轴偏差（正值表示十字准星在图像右侧）
+        根据十字准星偏差调整车辆位置（只调整垂直于车身的方向）
+        :param offset: 偏差向量（正值表示十字准星在图像右侧/下方）
         """
-
+        offset_x = offset.x
+        
         if abs(offset_x) > 100:
             calibration_speed = 0.03  # 偏差大时使用较快速度
         elif abs(offset_x) > 50:
@@ -352,19 +355,21 @@ class ActionComponent(Component):
         else:
             calibration_speed = 0.05  # 偏差小时使用最慢速度
 
-        self.logger.info(f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用速度{calibration_speed:.2f}")
+        self.logger.info(f"调整车辆位置: 偏差{offset}, 使用速度{calibration_speed:.2f}")
 
         # 先停止当前运动
         self.main.motionComponent.stopMotion()
 
         # 根据X轴偏差方向移动
-        if abs(offset_x) > 3:  # 只有偏差大于5像素才移动
+        if abs(offset_x) > 3:  # 只有偏差大于3像素才移动
             if offset_x > 0:
                 # 十字准星在右侧，车需要向右移动（负Y方向）
-                self.main.motionComponent.setVelocity(linear_y=-calibration_speed)
+                velocity = util.Velocity.create(linear_y=-calibration_speed)
             else:
                 # 十字准星在左侧，车需要向左移动（正Y方向）
-                self.main.motionComponent.setVelocity(linear_y=calibration_speed)
+                velocity = util.Velocity.create(linear_y=calibration_speed)
+            
+            self.main.motionComponent.setVelocity(velocity)
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
 
@@ -388,7 +393,7 @@ class ActionComponent(Component):
             self.logger.info("开始姿势调整（仅旋转z轴）...")
 
             for iteration in range(max_iterations):
-                crosshair: (float, float) | None = await self.getCrosshairPosition(queue)
+                crosshair: util.V2 | None = await self.getCrosshairPosition(queue)
 
                 if crosshair is None:
                     self.logger.warning(f"姿势调整第{iteration + 1}次: 未找到十字准星")
@@ -397,11 +402,12 @@ class ActionComponent(Component):
 
                 # 图像中心
                 center_x = 350  # 图像中心320 物理中心360
+                center = util.V2(center_x, 0)
 
-                crosshair_x, crosshair_y = crosshair
-                offset_x = crosshair_x - center_x
+                offset = crosshair - center
+                offset_x = offset.x
 
-                self.logger.info(f"角度校准第{iteration + 1}次: 十字准星X位置{crosshair_x:.1f}, X轴偏差{offset_x:.1f}")
+                self.logger.info(f"角度校准第{iteration + 1}次: 十字准星位置{crosshair}, X轴偏差{offset_x:.1f}")
 
                 # 检查是否已经足够接近中心
                 if abs(offset_x) <= center_tolerance:
@@ -409,7 +415,7 @@ class ActionComponent(Component):
                     break
 
                 # 计算需要旋转的角度方向
-                await self._rotateToCenter(offset_x)
+                await self._rotateToCenter(offset)
 
                 # 等待运动完成
                 await asyncio.sleep(1.0)
@@ -421,13 +427,14 @@ class ActionComponent(Component):
             self.main.motionComponent.enableSpeedAttenuation()
             await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
 
-    async def _rotateToCenter(self, offset_x: float):
+    async def _rotateToCenter(self, offset: util.V2):
         """
         通过旋转z轴让十字准星移向中心
         参照calibration的调整模式，但只使用角度调整
-        :param crosshair: 十字准星位置
-        :param center: 图像中心位置
+        :param offset: 偏差向量
         """
+        offset_x = offset.x
+        
         if abs(offset_x) > 100:
             calibration_speed = 0.5  # 偏差大时使用较快速度
         elif abs(offset_x) > 50:
@@ -435,14 +442,16 @@ class ActionComponent(Component):
         else:
             calibration_speed = 0.3  # 偏差小时使用最慢速度
 
-        self.logger.info(f"调整车辆位置: X轴偏差{offset_x:.1f}像素, 使用角速度{calibration_speed:.2f}")
+        self.logger.info(f"调整车辆角度: 偏差{offset}, 使用角速度{calibration_speed:.2f}")
 
         self.main.motionComponent.stopMotion()
         if abs(offset_x) > 3:
             if offset_x > 0:
-                self.main.motionComponent.setVelocity(angular_z=-calibration_speed)
+                velocity = util.Velocity.create(angular_z=-calibration_speed)
             else:
-                self.main.motionComponent.setVelocity(angular_z=calibration_speed)
+                velocity = util.Velocity.create(angular_z=calibration_speed)
+            
+            self.main.motionComponent.setVelocity(velocity)
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
 
@@ -506,6 +515,27 @@ class ActionComponent(Component):
             self.logger.warning(f"中心区域({center_region.shape})未检测到有效深度数据")
 
         return result
+
+    async def multipleDepthImageCalculateDistance(self, number: int, queue: asyncio.Queue[cv2.typing.MatLike] | None):
+        needRelease = False
+        if queue is None:
+            queue = await self.main.orbbecCameraComponent.depth.subscribe(
+                asyncio.Queue(maxsize=1)
+            )
+            needRelease = True
+
+        try:
+            summation: float = 0
+
+            for _ in range(number):
+                mat = await  queue.get()
+                summation += self.depthImageCalculateDistance(mat)
+
+            return summation / number
+
+        finally:
+            if needRelease:
+                await self.main.orbbecCameraComponent.depth.unsubscribe(queue)
 
     async def testDepthDistance(self, duration: float = 10.0):
         """
@@ -706,6 +736,32 @@ class ActionComponent(Component):
             else:
                 self.logger.info("行驶结束 - 未获取到有效距离数据")
 
+    async def demonstration(self):
+
+        try:
+
+            await self.exitCabin()
+
+            await self.startMapping()
+
+            await self.searchFire()
+
+            distance = await self.multipleDepthImageCalculateDistance(5, None)
+            targetDistance = distance - 0.3
+
+            # 使用 Pose 对象创建目标位置
+            target_position = util.V3(targetDistance, 0, 0)
+            await self.actionNavToPosition(target_position)
+
+
+            await self.inCabin()
+
+        except Exception as e:
+            self.logger.error(f"demonstration Error: {str(e)}")
+        finally:
+            await self.closeMapping()
+        pass
+
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
@@ -725,10 +781,10 @@ class ActionComponent(Component):
 
                 if key == "close":
                     await self.main.exclusiveServerReportComponent.closeRollingDoor()
-                
+
                 if key == "exitCabin":
                     await self.exitCabin()
-                
+
                 if key == "calibration":
                     await self.calibration()
 

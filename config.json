@@ -9,7 +9,6 @@
     "timeout": 30,
     "pingInterval": 10,
     "subprotocol": "graphql-transport-ws",
-
     "lodgeLight": "挂着咸鱼的路灯"
   },
   "OrbbecCameraComponent": {
@@ -29,14 +28,15 @@
     "NMS_THRESH": 0.5
   },
   "MotionComponent": {
-    "speed": 0.3
+    "speed": 0.3,
+    "turnSpeed": 0.8
   },
   "RosAccessComponent": {
     "baseLaunch": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_base.launch",
     "mapLaunch": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_map.launch"
   },
-  "BroadcastComponent" : {
-    "#soundSource" : "/home/cat/catkin_ws/src/roscar_pkg/sound",
-    "soundSource" : "/home/cat/car/sound"
+  "BroadcastComponent": {
+    "#soundSource": "/home/cat/catkin_ws/src/roscar_pkg/sound",
+    "soundSource": "/home/cat/car/sound"
   }
 }

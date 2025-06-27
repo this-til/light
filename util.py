@@ -66,6 +66,471 @@ class Color:
         pass
 
 
+class V2:
+    """二维向量类"""
+    x: float = 0.0
+    y: float = 0.0
+
+    def __init__(self, x: float = 0.0, y: float = 0.0):
+        self.x = x
+        self.y = y
+
+    def __add__(self, other: 'V2') -> 'V2':
+        return V2(self.x + other.x, self.y + other.y)
+
+    def __sub__(self, other: 'V2') -> 'V2':
+        return V2(self.x - other.x, self.y - other.y)
+
+    def __mul__(self, scalar: float) -> 'V2':
+        return V2(self.x * scalar, self.y * scalar)
+
+    def __truediv__(self, scalar: float) -> 'V2':
+        if scalar == 0:
+            raise ValueError("除数不能为零")
+        return V2(self.x / scalar, self.y / scalar)
+
+    def dot(self, other: 'V2') -> float:
+        """点积"""
+        return self.x * other.x + self.y * other.y
+
+    def magnitude(self) -> float:
+        """向量长度"""
+        return math.sqrt(self.x * self.x + self.y * self.y)
+
+    def normalize(self) -> 'V2':
+        """归一化"""
+        mag = self.magnitude()
+        if mag == 0:
+            return V2(0, 0)
+        return V2(self.x / mag, self.y / mag)
+
+    def distance(self, other: 'V2') -> float:
+        """与另一个向量的距离"""
+        return (self - other).magnitude()
+
+    def __str__(self) -> str:
+        return f"V2({self.x:.3f}, {self.y:.3f})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class V3:
+    """三维向量类"""
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+
+    def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0):
+        self.x = x
+        self.y = y
+        self.z = z
+
+    def __add__(self, other: 'V3') -> 'V3':
+        return V3(self.x + other.x, self.y + other.y, self.z + other.z)
+
+    def __sub__(self, other: 'V3') -> 'V3':
+        return V3(self.x - other.x, self.y - other.y, self.z - other.z)
+
+    def __mul__(self, scalar: float) -> 'V3':
+        return V3(self.x * scalar, self.y * scalar, self.z * scalar)
+
+    def __truediv__(self, scalar: float) -> 'V3':
+        if scalar == 0:
+            raise ValueError("除数不能为零")
+        return V3(self.x / scalar, self.y / scalar, self.z / scalar)
+
+    def dot(self, other: 'V3') -> float:
+        """点积"""
+        return self.x * other.x + self.y * other.y + self.z * other.z
+
+    def cross(self, other: 'V3') -> 'V3':
+        """叉积"""
+        return V3(
+            self.y * other.z - self.z * other.y,
+            self.z * other.x - self.x * other.z,
+            self.x * other.y - self.y * other.x
+        )
+
+    def magnitude(self) -> float:
+        """向量长度"""
+        return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
+
+    def normalize(self) -> 'V3':
+        """归一化"""
+        mag = self.magnitude()
+        if mag == 0:
+            return V3(0, 0, 0)
+        return V3(self.x / mag, self.y / mag, self.z / mag)
+
+    def distance(self, other: 'V3') -> float:
+        """与另一个向量的距离"""
+        return (self - other).magnitude()
+
+    def toV2(self) -> V2:
+        """转换为二维向量（忽略z分量）"""
+        return V2(self.x, self.y)
+
+    def __str__(self) -> str:
+        return f"V3({self.x:.3f}, {self.y:.3f}, {self.z:.3f})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class V4:
+    """四维向量类"""
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    w: float = 0.0
+
+    def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0, w: float = 0.0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.w = w
+
+    def __add__(self, other: 'V4') -> 'V4':
+        return V4(self.x + other.x, self.y + other.y, self.z + other.z, self.w + other.w)
+
+    def __sub__(self, other: 'V4') -> 'V4':
+        return V4(self.x - other.x, self.y - other.y, self.z - other.z, self.w - other.w)
+
+    def __mul__(self, scalar: float) -> 'V4':
+        return V4(self.x * scalar, self.y * scalar, self.z * scalar, self.w * scalar)
+
+    def __truediv__(self, scalar: float) -> 'V4':
+        if scalar == 0:
+            raise ValueError("除数不能为零")
+        return V4(self.x / scalar, self.y / scalar, self.z / scalar, self.w / scalar)
+
+    def dot(self, other: 'V4') -> float:
+        """点积"""
+        return self.x * other.x + self.y * other.y + self.z * other.z + self.w * other.w
+
+    def magnitude(self) -> float:
+        """向量长度"""
+        return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w)
+
+    def normalize(self) -> 'V4':
+        """归一化"""
+        mag = self.magnitude()
+        if mag == 0:
+            return V4(0, 0, 0, 0)
+        return V4(self.x / mag, self.y / mag, self.z / mag, self.w / mag)
+
+    def distance(self, other: 'V4') -> float:
+        """与另一个向量的距离"""
+        return (self - other).magnitude()
+
+    def toV3(self) -> V3:
+        """转换为三维向量（忽略w分量）"""
+        return V3(self.x, self.y, self.z)
+
+    def toV2(self) -> V2:
+        """转换为二维向量（忽略z和w分量）"""
+        return V2(self.x, self.y)
+
+    def __str__(self) -> str:
+        return f"V4({self.x:.3f}, {self.y:.3f}, {self.z:.3f}, {self.w:.3f})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class Velocity:
+    """速度类 - 封装线性和角速度"""
+    linear: V3
+    angular: V3
+    
+    def __init__(self, linear: V3 = None, angular: V3 = None):
+        self.linear = linear if linear is not None else V3()
+        self.angular = angular if angular is not None else V3()
+    
+    @staticmethod
+    def create(linear_x: float = 0.0, linear_y: float = 0.0, linear_z: float = 0.0,
+               angular_x: float = 0.0, angular_y: float = 0.0, angular_z: float = 0.0) -> 'Velocity':
+        """创建速度对象"""
+        return Velocity(
+            linear=V3(linear_x, linear_y, linear_z),
+            angular=V3(angular_x, angular_y, angular_z)
+        )
+    
+    def setLinear(self, x: float = None, y: float = None, z: float = None):
+        """设置线性速度分量"""
+        if x is not None:
+            self.linear.x = x
+        if y is not None:
+            self.linear.y = y
+        if z is not None:
+            self.linear.z = z
+    
+    def setAngular(self, x: float = None, y: float = None, z: float = None):
+        """设置角速度分量"""
+        if x is not None:
+            self.angular.x = x
+        if y is not None:
+            self.angular.y = y
+        if z is not None:
+            self.angular.z = z
+    
+    def hasVelocity(self, threshold: float = 0.01) -> bool:
+        """检查是否有速度"""
+        return (abs(self.linear.x) > threshold or 
+                abs(self.linear.y) > threshold or 
+                abs(self.linear.z) > threshold or
+                abs(self.angular.x) > threshold or 
+                abs(self.angular.y) > threshold or 
+                abs(self.angular.z) > threshold)
+    
+    def stop(self):
+        """停止所有速度"""
+        self.linear = V3()
+        self.angular = V3()
+    
+    def attenuate(self, factor: float = 0.85, threshold: float = 0.01):
+        """衰减速度"""
+        self.linear = self.linear * factor
+        self.angular = self.angular * factor
+        
+        # 低于阈值时设为0
+        if abs(self.linear.x) < threshold:
+            self.linear.x = 0.0
+        if abs(self.linear.y) < threshold:
+            self.linear.y = 0.0
+        if abs(self.linear.z) < threshold:
+            self.linear.z = 0.0
+        if abs(self.angular.x) < threshold:
+            self.angular.x = 0.0
+        if abs(self.angular.y) < threshold:
+            self.angular.y = 0.0
+        if abs(self.angular.z) < threshold:
+            self.angular.z = 0.0
+    
+    def __str__(self) -> str:
+        return f"Velocity(linear={self.linear}, angular={self.angular})"
+
+
+class Pose:
+    """姿态类 - 封装位置和朝向"""
+    position: V3
+    orientation: Quaternion
+    
+    def __init__(self, position: V3 = None, orientation: Quaternion = None):
+        self.position = position if position is not None else V3()
+        self.orientation = orientation if orientation is not None else Quaternion.identity()
+    
+    @staticmethod
+    def create(x: float = 0.0, y: float = 0.0, z: float = 0.0,
+               qx: float = 0.0, qy: float = 0.0, qz: float = 0.0, qw: float = 1.0) -> 'Pose':
+        """创建姿态对象"""
+        return Pose(
+            position=V3(x, y, z),
+            orientation=Quaternion(qx, qy, qz, qw)
+        )
+    
+    @staticmethod
+    def fromEuler(x: float = 0.0, y: float = 0.0, z: float = 0.0,
+                  roll: float = 0.0, pitch: float = 0.0, yaw: float = 0.0) -> 'Pose':
+        """从欧拉角创建姿态对象"""
+        return Pose(
+            position=V3(x, y, z),
+            orientation=Quaternion.fromEulerAngles(roll, pitch, yaw)
+        )
+    
+    @staticmethod
+    def fromEulerDegrees(x: float = 0.0, y: float = 0.0, z: float = 0.0,
+                         rollDeg: float = 0.0, pitchDeg: float = 0.0, yawDeg: float = 0.0) -> 'Pose':
+        """从欧拉角（度数）创建姿态对象"""
+        return Pose(
+            position=V3(x, y, z),
+            orientation=Quaternion.fromEulerAnglesDegrees(rollDeg, pitchDeg, yawDeg)
+        )
+    
+    def setPosition(self, x: float = None, y: float = None, z: float = None):
+        """设置位置分量"""
+        if x is not None:
+            self.position.x = x
+        if y is not None:
+            self.position.y = y
+        if z is not None:
+            self.position.z = z
+    
+    def getEulerAngles(self) -> Tuple[float, float, float]:
+        """获取欧拉角（弧度）"""
+        return self.orientation.toEulerAngles()
+    
+    def getEulerAnglesDegrees(self) -> Tuple[float, float, float]:
+        """获取欧拉角（度数）"""
+        return self.orientation.toEulerAnglesDegrees()
+    
+    def __str__(self) -> str:
+        return f"Pose(position={self.position}, orientation={self.orientation})"
+
+
+class Quaternion:
+    """四元数类"""
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    w: float = 1.0
+    
+    def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0, w: float = 1.0):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.w = w
+    
+    @staticmethod
+    def identity() -> 'Quaternion':
+        """创建单位四元数（无旋转）"""
+        return Quaternion(0, 0, 0, 1)
+    
+    @staticmethod
+    def fromEulerAngles(roll: float, pitch: float, yaw: float) -> 'Quaternion':
+        """从欧拉角（弧度）创建四元数"""
+        cy = math.cos(yaw * 0.5)
+        sy = math.sin(yaw * 0.5)
+        cp = math.cos(pitch * 0.5)
+        sp = math.sin(pitch * 0.5)
+        cr = math.cos(roll * 0.5)
+        sr = math.sin(roll * 0.5)
+        
+        return Quaternion(
+            x=sr * cp * cy - cr * sp * sy,
+            y=cr * sp * cy + sr * cp * sy,
+            z=cr * cp * sy - sr * sp * cy,
+            w=cr * cp * cy + sr * sp * sy
+        )
+    
+    @staticmethod
+    def fromEulerAnglesDegrees(rollDeg: float, pitchDeg: float, yawDeg: float) -> 'Quaternion':
+        """从欧拉角（度数）创建四元数"""
+        return Quaternion.fromEulerAngles(
+            degreesToRadians(rollDeg),
+            degreesToRadians(pitchDeg),
+            degreesToRadians(yawDeg)
+        )
+    
+    def toEulerAngles(self) -> Tuple[float, float, float]:
+        """转换为欧拉角（弧度）- 返回 (roll, pitch, yaw)"""
+        # Roll (x-axis rotation)
+        sinr_cosp = 2 * (self.w * self.x + self.y * self.z)
+        cosr_cosp = 1 - 2 * (self.x * self.x + self.y * self.y)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+        
+        # Pitch (y-axis rotation)
+        sinp = 2 * (self.w * self.y - self.z * self.x)
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)  # use 90 degrees if out of range
+        else:
+            pitch = math.asin(sinp)
+        
+        # Yaw (z-axis rotation)
+        siny_cosp = 2 * (self.w * self.z + self.x * self.y)
+        cosy_cosp = 1 - 2 * (self.y * self.y + self.z * self.z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        
+        return (roll, pitch, yaw)
+    
+    def toEulerAnglesDegrees(self) -> Tuple[float, float, float]:
+        """转换为欧拉角（度数）- 返回 (roll, pitch, yaw)"""
+        roll, pitch, yaw = self.toEulerAngles()
+        return (
+            math.degrees(roll),
+            math.degrees(pitch),
+            math.degrees(yaw)
+        )
+
+    def __mul__(self, other: 'Quaternion') -> 'Quaternion':
+        """四元数乘法"""
+        return Quaternion(
+            self.w * other.x + self.x * other.w + self.y * other.z - self.z * other.y,
+            self.w * other.y - self.x * other.z + self.y * other.w + self.z * other.x,
+            self.w * other.z + self.x * other.y - self.y * other.x + self.z * other.w,
+            self.w * other.w - self.x * other.x - self.y * other.y - self.z * other.z
+        )
+
+    def magnitude(self) -> float:
+        """四元数长度"""
+        return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w)
+
+    def normalize(self) -> 'Quaternion':
+        """归一化"""
+        mag = self.magnitude()
+        if mag == 0:
+            return Quaternion(0, 0, 0, 1)
+        return Quaternion(self.x / mag, self.y / mag, self.z / mag, self.w / mag)
+
+    def conjugate(self) -> 'Quaternion':
+        """共轭四元数"""
+        return Quaternion(-self.x, -self.y, -self.z, self.w)
+
+    def inverse(self) -> 'Quaternion':
+        """逆四元数"""
+        magSq = self.magnitude() ** 2
+        if magSq == 0:
+            raise ValueError("无法计算零四元数的逆")
+        conj = self.conjugate()
+        return Quaternion(conj.x / magSq, conj.y / magSq, conj.z / magSq, conj.w / magSq)
+
+    def rotateVector(self, vector: V3) -> V3:
+        """使用四元数旋转三维向量"""
+        vecQuat = Quaternion(vector.x, vector.y, vector.z, 0)
+        result = self * vecQuat * self.conjugate()
+        return V3(result.x, result.y, result.z)
+
+    def toEulerAngles(self) -> Tuple[float, float, float]:
+        """转换为欧拉角（弧度）"""
+        return quaternionToEuler(self.x, self.y, self.z, self.w)
+
+    def toEulerAnglesDegrees(self) -> Tuple[float, float, float]:
+        """转换为欧拉角（度数）"""
+        return quaternionToEulerDegrees(self.x, self.y, self.z, self.w)
+
+    def toV4(self) -> V4:
+        """转换为四维向量"""
+        return V4(self.x, self.y, self.z, self.w)
+
+    @staticmethod
+    def fromEulerAngles(roll: float, pitch: float, yaw: float) -> 'Quaternion':
+        """从欧拉角（弧度）创建四元数"""
+        x, y, z, w = eulerToQuaternion(roll, pitch, yaw)
+        return Quaternion(x, y, z, w)
+
+    @staticmethod
+    def fromEulerAnglesDegrees(rollDeg: float, pitchDeg: float, yawDeg: float) -> 'Quaternion':
+        """从欧拉角（度数）创建四元数"""
+        x, y, z, w = eulerToQuaternionDegrees(rollDeg, pitchDeg, yawDeg)
+        return Quaternion(x, y, z, w)
+
+    @staticmethod
+    def fromAxisAngle(axis: V3, angle: float) -> 'Quaternion':
+        """从轴角创建四元数"""
+        normalizedAxis = axis.normalize()
+        halfAngle = angle * 0.5
+        sinHalfAngle = math.sin(halfAngle)
+        cosHalfAngle = math.cos(halfAngle)
+        
+        return Quaternion(
+            normalizedAxis.x * sinHalfAngle,
+            normalizedAxis.y * sinHalfAngle,
+            normalizedAxis.z * sinHalfAngle,
+            cosHalfAngle
+        )
+
+    @staticmethod
+    def identity() -> 'Quaternion':
+        """单位四元数"""
+        return Quaternion(0, 0, 0, 1)
+
+    def __str__(self) -> str:
+        return f"Quaternion({self.x:.3f}, {self.y:.3f}, {self.z:.3f}, {self.w:.3f})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 class Broadcaster(Generic[T]):
 
     def __init__(self):
@@ -1040,3 +1505,180 @@ def quaternionToEulerDegrees(x: float, y: float, z: float, w: float) -> Tuple[fl
     """
     roll, pitch, yaw = quaternionToEuler(x, y, z, w)
     return (math.degrees(roll), math.degrees(pitch), math.degrees(yaw))
+
+
+# 向量转换函数
+def v2ToTuple(v: V2) -> Tuple[float, float]:
+    """将 V2 转换为元组"""
+    return (v.x, v.y)
+
+
+def v3ToTuple(v: V3) -> Tuple[float, float, float]:
+    """将 V3 转换为元组"""
+    return (v.x, v.y, v.z)
+
+
+def v4ToTuple(v: V4) -> Tuple[float, float, float, float]:
+    """将 V4 转换为元组"""
+    return (v.x, v.y, v.z, v.w)
+
+
+def tupleToV2(t: Tuple[float, float]) -> V2:
+    """将元组转换为 V2"""
+    return V2(t[0], t[1])
+
+
+def tupleToV3(t: Tuple[float, float, float]) -> V3:
+    """将元组转换为 V3"""
+    return V3(t[0], t[1], t[2])
+
+
+def tupleToV4(t: Tuple[float, float, float, float]) -> V4:
+    """将元组转换为 V4"""
+    return V4(t[0], t[1], t[2], t[3])
+
+
+def v2ToV3(v: V2, z: float = 0.0) -> V3:
+    """将 V2 转换为 V3，添加指定的 z 分量"""
+    return V3(v.x, v.y, z)
+
+
+def v3ToV4(v: V3, w: float = 0.0) -> V4:
+    """将 V3 转换为 V4，添加指定的 w 分量"""
+    return V4(v.x, v.y, v.z, w)
+
+
+def v2ToV4(v: V2, z: float = 0.0, w: float = 0.0) -> V4:
+    """将 V2 转换为 V4，添加指定的 z 和 w 分量"""
+    return V4(v.x, v.y, z, w)
+
+
+# 四元数转换函数
+def quaternionToTuple(q: Quaternion) -> Tuple[float, float, float, float]:
+    """将四元数转换为元组 (x, y, z, w)"""
+    return (q.x, q.y, q.z, q.w)
+
+
+def tupleToQuaternion(t: Tuple[float, float, float, float]) -> Quaternion:
+    """将元组 (x, y, z, w) 转换为四元数"""
+    return Quaternion(t[0], t[1], t[2], t[3])
+
+
+def quaternionToV4(q: Quaternion) -> V4:
+    """将四元数转换为 V4"""
+    return q.toV4()
+
+
+def v4ToQuaternion(v: V4) -> Quaternion:
+    """将 V4 转换为四元数"""
+    return Quaternion(v.x, v.y, v.z, v.w)
+
+
+# 角度转换函数
+def degreesToRadians(degrees: float) -> float:
+    """将度数转换为弧度"""
+    return math.radians(degrees)
+
+
+def radiansToDegrees(radians: float) -> float:
+    """将弧度转换为度数"""
+    return math.degrees(radians)
+
+
+def normalizeAngle(angle: float) -> float:
+    """将角度标准化到 [-π, π] 范围内（弧度）"""
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
+
+def normalizeAngleDegrees(angle: float) -> float:
+    """将角度标准化到 [-180, 180] 范围内（度数）"""
+    while angle > 180:
+        angle -= 360
+    while angle < -180:
+        angle += 360
+    return angle
+
+
+# 向量操作函数
+def lerp(start: float, end: float, t: float) -> float:
+    """线性插值"""
+    return start + (end - start) * t
+
+
+def lerpV2(start: V2, end: V2, t: float) -> V2:
+    """V2 线性插值"""
+    return V2(
+        lerp(start.x, end.x, t),
+        lerp(start.y, end.y, t)
+    )
+
+
+def lerpV3(start: V3, end: V3, t: float) -> V3:
+    """V3 线性插值"""
+    return V3(
+        lerp(start.x, end.x, t),
+        lerp(start.y, end.y, t),
+        lerp(start.z, end.z, t)
+    )
+
+
+def slerpQuaternion(start: Quaternion, end: Quaternion, t: float) -> Quaternion:
+    """四元数球面线性插值"""
+    dot = start.x * end.x + start.y * end.y + start.z * end.z + start.w * end.w
+    
+    # 如果点积为负，取反其中一个四元数以选择更短的路径
+    if dot < 0.0:
+        end = Quaternion(-end.x, -end.y, -end.z, -end.w)
+        dot = -dot
+    
+    # 如果四元数非常接近，使用线性插值
+    if dot > 0.9995:
+        result = Quaternion(
+            start.x + t * (end.x - start.x),
+            start.y + t * (end.y - start.y),
+            start.z + t * (end.z - start.z),
+            start.w + t * (end.w - start.w)
+        )
+        return result.normalize()
+    
+    # 计算球面插值
+    theta0 = math.acos(abs(dot))
+    sinTheta0 = math.sin(theta0)
+    theta = theta0 * t
+    sinTheta = math.sin(theta)
+    
+    s0 = math.cos(theta) - dot * sinTheta / sinTheta0
+    s1 = sinTheta / sinTheta0
+    
+    return Quaternion(
+        s0 * start.x + s1 * end.x,
+        s0 * start.y + s1 * end.y,
+        s0 * start.z + s1 * end.z,
+        s0 * start.w + s1 * end.w
+    )
+
+
+def clamp(value: float, minVal: float, maxVal: float) -> float:
+    """将值限制在指定范围内"""
+    return max(minVal, min(maxVal, value))
+
+
+def clampV2(v: V2, minVal: V2, maxVal: V2) -> V2:
+    """将 V2 的各分量限制在指定范围内"""
+    return V2(
+        clamp(v.x, minVal.x, maxVal.x),
+        clamp(v.y, minVal.y, maxVal.y)
+    )
+
+
+def clampV3(v: V3, minVal: V3, maxVal: V3) -> V3:
+    """将 V3 的各分量限制在指定范围内"""
+    return V3(
+        clamp(v.x, minVal.x, maxVal.x),
+        clamp(v.y, minVal.y, maxVal.y),
+        clamp(v.z, minVal.z, maxVal.z)
+    )

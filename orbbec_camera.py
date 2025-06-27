@@ -80,6 +80,7 @@ class OrbbecCameraComponent(Component):
         while True:
             try:
 
+
                 self.config = Config()
                 self.pipeline = Pipeline()
 
