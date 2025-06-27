@@ -63,7 +63,7 @@ class ActionComponent(Component):
             self.main.rosAccessComponent.mapLaunchFile.shutdown()
             self.actionClient = None
         
-    async def actionNav(self, x_axle=1, y_axle=0, x=0, y=0, z=0, w=0):
+    async def actionNav(self, x_axle=1.0, y_axle=0.0, x=0.0, y=0.0, z=0.0, w=0.0):
         
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "map"
@@ -111,7 +111,7 @@ class ActionComponent(Component):
         completed: bool = False
 
         for retryCount in range(3):
-            if await self.actionNav(-1, 0, 0, 0, 0, 0) == actionlib.GoalStatus.SUCCEEDED:
+            if await self.actionNav(0.2, 0, 0, 0, 0, 1) == actionlib.GoalStatus.SUCCEEDED:
                 completed = True
                 break
 
