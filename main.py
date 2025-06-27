@@ -33,21 +33,11 @@ import cv2
 import util
 from typing import Generic, TypeVar
 
-""" logging.basicConfig(
+logging.basicConfig(
     level=logging.DEBUG, format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
-) """
+)
 
 logger = logging.getLogger(__name__)
-
-class LogHandler(logging.Handler):
-    """绕开ROS直接输出日志"""
-    
-    def emit(self, record):
-        try:
-            print(self.format(record))
-        except Exception as e:
-            pass
-        
 
 T = TypeVar("T")  # 定义泛型类型
 
@@ -123,14 +113,6 @@ class Mian:
         pass
 
     async def main(self):
-        handler = LogHandler()
-        
-        formatter = logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s")
-        handler.setFormatter(formatter)
-        
-        root_logger = logging.getLogger()
-        root_logger.addHandler(handler)
-        
         from ros_access import RosAccessComponent
         from configure import ConfigureComponent
         from orbbec_camera import OrbbecCameraComponent

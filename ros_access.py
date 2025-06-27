@@ -22,6 +22,17 @@ from typing import Generic, TypeVar
 from main import Component, ConfigField
 
 
+class LogHandler(logging.Handler):
+    """绕开ROS直接输出日志"""
+    
+    def emit(self, record):
+        try:
+            print(self.format(record))
+        except Exception as e:
+            pass
+        
+
+
 class RosAccessComponent (Component):
     
     baseLaunch : ConfigField[str] = ConfigField()
@@ -119,11 +130,22 @@ class RosAccessComponent (Component):
                 self.logger.info("ROS 节点初始化完成")
             except rospy.exceptions.ROSException as rosE:
                 self.logger.warning(f"ROS 节点可能已经初始化: {rosE}")
+        
             
         # 确保 ROS 节点正常运行
         if not rospy.is_shutdown():
             self.logger.info("ROS 节点运行正常")
-    
+        
+        handler = LogHandler()
+        
+        formatter = logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s")
+        handler.setFormatter(formatter)
+        
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
+        
+        root_logger.setLevel("DEBUG")
+        
 
         self.baseLaunchFile = roslaunch.parent.ROSLaunchParent(
             roslaunch.rlutil.get_or_generate_uuid(None, False),
