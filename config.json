@@ -29,7 +29,10 @@
   },
   "MotionComponent": {
     "speed": 0.3,
-    "turnSpeed": 0.8
+    "turnSpeed": 0.8,
+    "rotationTolerance": 2.0,
+    "rotationKp": 0.02,
+    "maxRotationSpeed": 1.6
   },
   "RosAccessComponent": {
     "baseLaunch": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_base.launch",

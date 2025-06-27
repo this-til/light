@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 
 import rospy
 from geometry_msgs.msg import Twist
@@ -13,6 +14,10 @@ import util
 class MotionComponent(Component):
     speed: ConfigField[float] = ConfigField()
     turnSpeed: ConfigField[float] = ConfigField()
+    # 旋转控制参数
+    rotationTolerance: ConfigField[float] = ConfigField()  # 旋转容忍度（度）
+    rotationKp: ConfigField[float] = ConfigField()  # 旋转比例控制系数
+    maxRotationSpeed: ConfigField[float] = ConfigField()  # 最大旋转速度
 
     velPub = None  # 添加发布器变量
     msg = None
@@ -27,6 +32,7 @@ class MotionComponent(Component):
 
         asyncio.create_task(self.motionLoop())
         asyncio.create_task(self.speedAttenuationLoop())
+        asyncio.create_task(self.instructionLoop())
 
     def setVelocity(self, velocity: util.Velocity = None, linear_x: float = None, linear_y: float = None, angular_z: float = None):
         """设置速度值的公共函数 - 支持 Velocity 对象和单独参数"""
@@ -88,6 +94,124 @@ class MotionComponent(Component):
             self.enableSpeedAttenuation()
         else:
             self.disableSpeedAttenuation()
+
+    def getCurrentYaw(self) -> float:
+        """获取当前偏航角（度）"""
+        if hasattr(self.main, 'imuComponent'):
+            return self.main.imuComponent.euler.z
+        else:
+            self.logger.warning("IMU组件不可用，无法获取当前角度")
+            return 0.0
+
+    def normalizeAngle(self, angle: float) -> float:
+        """将角度规范化到[-180, 180]范围"""
+        return util.normalizeAngleDegrees(angle)
+
+    def calculateAngleDifference(self, target_angle: float, current_angle: float) -> float:
+        """计算两个角度之间的最短角度差"""
+        diff = target_angle - current_angle
+        return self.normalizeAngle(diff)
+
+    async def rotateToAngle(self, target_angle: float, timeout: float = 30.0) -> bool:
+        """
+        旋转到指定的绝对角度
+        
+        参数:
+            target_angle: 目标角度（度，-180到180）
+            timeout: 超时时间（秒）
+        
+        返回:
+            bool: 是否成功到达目标角度
+        """
+        self.logger.info(f"开始旋转到目标角度: {target_angle}°")
+        
+        # 规范化目标角度
+        target_angle = self.normalizeAngle(target_angle)
+        
+        start_time = asyncio.get_event_loop().time()
+        was_attenuation_enabled = self.speedAttenuationEnabled
+        
+        try:
+            # 暂时禁用速度衰减
+            self.disableSpeedAttenuation()
+            
+            while True:
+                current_time = asyncio.get_event_loop().time()
+                
+                # 检查超时
+                if current_time - start_time > timeout:
+                    self.logger.warning(f"旋转到角度 {target_angle}° 超时")
+                    self.stopMotion()
+                    return False
+                
+                # 获取当前角度
+                current_angle = self.getCurrentYaw()
+                
+                # 计算角度误差
+                angle_error = self.calculateAngleDifference(target_angle, current_angle)
+                
+                # 检查是否到达目标
+                if abs(angle_error) <= self.rotationTolerance:
+                    self.logger.info(f"成功旋转到目标角度: {target_angle}°，当前角度: {current_angle:.2f}°")
+                    self.stopMotion()
+                    return True
+                
+                # 计算控制输出（比例控制）
+                angular_velocity = angle_error * self.rotationKp
+                
+                # 限制最大旋转速度
+                angular_velocity = util.clamp(angular_velocity, -self.maxRotationSpeed, self.maxRotationSpeed)
+                
+                # 设置旋转速度
+                self.setVelocity(angular_z=angular_velocity)
+                
+                # 控制循环频率
+                await asyncio.sleep(0.05)
+                
+        except asyncio.CancelledError:
+            self.logger.info("旋转任务被取消")
+            self.stopMotion()
+            raise
+        except Exception as e:
+            self.logger.error(f"旋转到角度过程中发生错误: {e}")
+            self.stopMotion()
+            return False
+        finally:
+            # 恢复速度衰减设置
+            self.setSpeedAttenuation(was_attenuation_enabled)
+
+    async def rotateByAngle(self, delta_angle: float, timeout: float = 30.0) -> bool:
+        """
+        相对当前位置旋转指定角度
+        
+        参数:
+            delta_angle: 要旋转的角度（度，正值为逆时针，负值为顺时针）
+            timeout: 超时时间（秒）
+        
+        返回:
+            bool: 是否成功完成旋转
+        """
+        self.logger.info(f"开始相对旋转 {delta_angle}°")
+        
+        # 获取当前角度
+        current_angle = self.getCurrentYaw()
+        
+        # 计算目标角度
+        target_angle = current_angle + delta_angle
+        target_angle = self.normalizeAngle(target_angle)
+        
+        self.logger.info(f"当前角度: {current_angle:.2f}°，目标角度: {target_angle:.2f}°")
+        
+        # 调用绝对角度旋转方法
+        return await self.rotateToAngle(target_angle, timeout)
+
+    async def rotateLeft(self, angle: float = 90.0, timeout: float = 30.0) -> bool:
+        """向左（逆时针）旋转指定角度"""
+        return await self.rotateByAngle(angle, timeout)
+
+    async def rotateRight(self, angle: float = 90.0, timeout: float = 30.0) -> bool:
+        """向右（顺时针）旋转指定角度"""
+        return await self.rotateByAngle(-angle, timeout)
 
     def handleOperation(self, operation: str):
         """处理不同操作类型的公共函数"""
@@ -196,3 +320,184 @@ class MotionComponent(Component):
         """使用向量组件运动指定时间"""
         velocity = util.Velocity(linear, angular)
         await self.motionTime(velocity=velocity, time=time)
+
+    async def instructionLoop(self):
+        """指令控制循环，处理运动相关的键盘指令"""
+        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+
+        while True:
+            try:
+                key = await queue.get()
+                
+                self.logger.info(f"收到运动指令: {key}")
+
+                # 旋转到指定角度指令：rotateToAngle:90
+                if key.startswith("rotateToAngle:"):
+                    try:
+                        angle_str = key.split(":")[1]
+                        target_angle = float(angle_str)
+                        if -180 <= target_angle <= 180:
+                            success = await self.rotateToAngle(target_angle)
+                            self.logger.info(f"旋转到角度 {target_angle}° {'成功' if success else '失败'}")
+                        else:
+                            self.logger.warning(f"目标角度超出范围: {target_angle}° (有效范围: -180° ~ 180°)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
+
+                # 相对旋转指令：rotateBy:45 或 rotateBy:-30
+                elif key.startswith("rotateBy:"):
+                    try:
+                        angle_str = key.split(":")[1]
+                        delta_angle = float(angle_str)
+                        if -360 <= delta_angle <= 360:
+                            success = await self.rotateByAngle(delta_angle)
+                            self.logger.info(f"相对旋转 {delta_angle}° {'成功' if success else '失败'}")
+                        else:
+                            self.logger.warning(f"旋转角度超出范围: {delta_angle}° (有效范围: -360° ~ 360°)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
+
+                # 向左旋转指令：rotateLeft 或 rotateLeft:90
+                elif key == "rotateLeft":
+                    success = await self.rotateLeft()  # 默认90度
+                    self.logger.info(f"向左旋转90° {'成功' if success else '失败'}")
+                elif key.startswith("rotateLeft:"):
+                    try:
+                        angle_str = key.split(":")[1]
+                        angle = float(angle_str)
+                        if 0 < angle <= 360:
+                            success = await self.rotateLeft(angle)
+                            self.logger.info(f"向左旋转 {angle}° {'成功' if success else '失败'}")
+                        else:
+                            self.logger.warning(f"旋转角度超出范围: {angle}° (有效范围: 0° ~ 360°)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
+
+                # 向右旋转指令：rotateRight 或 rotateRight:45
+                elif key == "rotateRight":
+                    success = await self.rotateRight()  # 默认90度
+                    self.logger.info(f"向右旋转90° {'成功' if success else '失败'}")
+                elif key.startswith("rotateRight:"):
+                    try:
+                        angle_str = key.split(":")[1]
+                        angle = float(angle_str)
+                        if 0 < angle <= 360:
+                            success = await self.rotateRight(angle)
+                            self.logger.info(f"向右旋转 {angle}° {'成功' if success else '失败'}")
+                        else:
+                            self.logger.warning(f"旋转角度超出范围: {angle}° (有效范围: 0° ~ 360°)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
+
+                # 运动控制指令：motionTime:forward:2 (前进2秒)
+                elif key.startswith("motionTime:"):
+                    try:
+                        parts = key.split(":")
+                        if len(parts) >= 3:
+                            direction = parts[1]
+                            time_str = parts[2]
+                            motion_time = float(time_str)
+                            
+                            if 0.1 <= motion_time <= 10.0:  # 限制合理的时间范围
+                                if direction == "forward":
+                                    await self.motionTime(linear_x=self.speed, time=motion_time)
+                                    self.logger.info(f"前进 {motion_time}秒 完成")
+                                elif direction == "backward":
+                                    await self.motionTime(linear_x=-self.speed, time=motion_time)
+                                    self.logger.info(f"后退 {motion_time}秒 完成")
+                                elif direction == "left":
+                                    await self.motionTime(linear_y=self.speed, time=motion_time)
+                                    self.logger.info(f"左移 {motion_time}秒 完成")
+                                elif direction == "right":
+                                    await self.motionTime(linear_y=-self.speed, time=motion_time)
+                                    self.logger.info(f"右移 {motion_time}秒 完成")
+                                elif direction == "rotateLeft":
+                                    await self.motionTime(angular_z=self.turnSpeed, time=motion_time)
+                                    self.logger.info(f"左转 {motion_time}秒 完成")
+                                elif direction == "rotateRight":
+                                    await self.motionTime(angular_z=-self.turnSpeed, time=motion_time)
+                                    self.logger.info(f"右转 {motion_time}秒 完成")
+                                else:
+                                    self.logger.warning(f"未知的运动方向: {direction}")
+                            else:
+                                self.logger.warning(f"运动时间超出范围: {motion_time}秒 (有效范围: 0.1s ~ 10.0s)")
+                        else:
+                            self.logger.error(f"无效的运动时间指令格式: {key}")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的运动时间格式: {key}, 错误: {str(e)}")
+
+                # 停止运动指令
+                elif key == "stopMotion":
+                    self.stopMotion()
+                    self.logger.info("已停止所有运动")
+
+                # 获取当前角度信息指令
+                elif key == "getCurrentAngle":
+                    if hasattr(self.main, 'imuComponent'):
+                        current_yaw = self.main.imuComponent.getYaw()
+                        current_euler = self.main.imuComponent.getEulerAngles()
+                        self.logger.info(f"当前角度信息 - 偏航角: {current_yaw:.2f}°, 欧拉角: {current_euler}")
+                    else:
+                        self.logger.warning("IMU组件不可用，无法获取角度信息")
+
+                # 速度衰减控制指令
+                elif key == "enableSpeedAttenuation":
+                    self.enableSpeedAttenuation()
+                elif key == "disableSpeedAttenuation":
+                    self.disableSpeedAttenuation()
+
+                # 调整旋转控制参数指令
+                elif key.startswith("setRotationTolerance:"):
+                    try:
+                        value_str = key.split(":")[1]
+                        tolerance = float(value_str)
+                        if 0.1 <= tolerance <= 10.0:
+                            self.rotationTolerance = tolerance
+                            self.logger.info(f"旋转容忍度已设置为: {tolerance}°")
+                        else:
+                            self.logger.warning(f"旋转容忍度超出范围: {tolerance}° (有效范围: 0.1° ~ 10.0°)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的容忍度格式: {key}, 错误: {str(e)}")
+
+                elif key.startswith("setRotationKp:"):
+                    try:
+                        value_str = key.split(":")[1]
+                        kp = float(value_str)
+                        if 0.001 <= kp <= 0.1:
+                            self.rotationKp = kp
+                            self.logger.info(f"旋转比例系数已设置为: {kp}")
+                        else:
+                            self.logger.warning(f"比例系数超出范围: {kp} (有效范围: 0.001 ~ 0.1)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的比例系数格式: {key}, 错误: {str(e)}")
+
+                elif key.startswith("setMaxRotationSpeed:"):
+                    try:
+                        value_str = key.split(":")[1]
+                        max_speed = float(value_str)
+                        if 0.1 <= max_speed <= 3.0:
+                            self.maxRotationSpeed = max_speed
+                            self.logger.info(f"最大旋转速度已设置为: {max_speed} rad/s")
+                        else:
+                            self.logger.warning(f"最大旋转速度超出范围: {max_speed} (有效范围: 0.1 ~ 3.0)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的最大速度格式: {key}, 错误: {str(e)}")
+
+                # 显示当前参数状态
+                elif key == "showMotionParams":
+                    self.logger.info("=== 当前运动参数 ===")
+                    self.logger.info(f"基础速度: {self.speed} m/s")
+                    self.logger.info(f"转弯速度: {self.turnSpeed} rad/s")
+                    self.logger.info(f"旋转容忍度: {self.rotationTolerance}°")
+                    self.logger.info(f"旋转比例系数: {self.rotationKp}")
+                    self.logger.info(f"最大旋转速度: {self.maxRotationSpeed} rad/s")
+                    self.logger.info(f"速度衰减: {'启用' if self.speedAttenuationEnabled else '禁用'}")
+                    if hasattr(self.main, 'imuComponent'):
+                        current_yaw = self.main.imuComponent.getYaw()
+                        self.logger.info(f"当前偏航角: {current_yaw:.2f}°")
+                    self.logger.info("==================")
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"运动指令处理异常: {str(e)}")

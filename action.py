@@ -832,13 +832,9 @@ class ActionComponent(Component):
                             self.logger.warning(f"目标距离超出范围: {target_distance}m (有效范围: 0.1m - 10.0m)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的距离格式: {key}, 错误: {str(e)}")
-                        
-                if key == "turnLeft_45":
-                    await self.main.motionComponent.motionTimeWithComponents(angular=util.V3(z = 0.8), time=0.5)
-                    
-                if key == "turnRight_45":
-                    await self.main.motionComponent.motionTimeWithComponents(angular=util.V3(z = -0.8), time=0.5)
-                    
+
+
+
             except asyncio.CancelledError:
                 raise
             except Exception as e:
