@@ -357,14 +357,6 @@ class Pose:
         if z is not None:
             self.position.z = z
     
-    def getEulerAngles(self) -> Tuple[float, float, float]:
-        """获取欧拉角（弧度）"""
-        return self.orientation.toEulerAngles()
-    
-    def getEulerAnglesDegrees(self) -> Tuple[float, float, float]:
-        """获取欧拉角（度数）"""
-        return self.orientation.toEulerAnglesDegrees()
-    
     def __str__(self) -> str:
         return f"Pose(position={self.position}, orientation={self.orientation})"
 
@@ -381,11 +373,6 @@ class Quaternion:
         self.y = y
         self.z = z
         self.w = w
-    
-    @staticmethod
-    def identity() -> 'Quaternion':
-        """创建单位四元数（无旋转）"""
-        return Quaternion(0, 0, 0, 1)
     
     @staticmethod
     def fromEulerAngles(roll: float, pitch: float, yaw: float) -> 'Quaternion':
@@ -413,7 +400,7 @@ class Quaternion:
             degreesToRadians(yawDeg)
         )
     
-    def toEulerAngles(self) -> Tuple[float, float, float]:
+    def toEulerAngles(self) -> 'V3':
         """转换为欧拉角（弧度）- 返回 (roll, pitch, yaw)"""
         # Roll (x-axis rotation)
         sinr_cosp = 2 * (self.w * self.x + self.y * self.z)
@@ -432,15 +419,15 @@ class Quaternion:
         cosy_cosp = 1 - 2 * (self.y * self.y + self.z * self.z)
         yaw = math.atan2(siny_cosp, cosy_cosp)
         
-        return (roll, pitch, yaw)
+        return V3(roll, pitch, yaw)
     
-    def toEulerAnglesDegrees(self) -> Tuple[float, float, float]:
+    def toEulerAnglesDegrees(self) -> 'V3':
         """转换为欧拉角（度数）- 返回 (roll, pitch, yaw)"""
-        roll, pitch, yaw = self.toEulerAngles()
-        return (
-            math.degrees(roll),
-            math.degrees(pitch),
-            math.degrees(yaw)
+        e= self.toEulerAngles()
+        return V3(
+            math.degrees(e.x),
+            math.degrees(e.y),
+            math.degrees(e.z)
         )
 
     def __mul__(self, other: 'Quaternion') -> 'Quaternion':
@@ -481,29 +468,9 @@ class Quaternion:
         result = self * vecQuat * self.conjugate()
         return V3(result.x, result.y, result.z)
 
-    def toEulerAngles(self) -> Tuple[float, float, float]:
-        """转换为欧拉角（弧度）"""
-        return quaternionToEuler(self.x, self.y, self.z, self.w)
-
-    def toEulerAnglesDegrees(self) -> Tuple[float, float, float]:
-        """转换为欧拉角（度数）"""
-        return quaternionToEulerDegrees(self.x, self.y, self.z, self.w)
-
     def toV4(self) -> V4:
         """转换为四维向量"""
         return V4(self.x, self.y, self.z, self.w)
-
-    @staticmethod
-    def fromEulerAngles(roll: float, pitch: float, yaw: float) -> 'Quaternion':
-        """从欧拉角（弧度）创建四元数"""
-        x, y, z, w = eulerToQuaternion(roll, pitch, yaw)
-        return Quaternion(x, y, z, w)
-
-    @staticmethod
-    def fromEulerAnglesDegrees(rollDeg: float, pitchDeg: float, yawDeg: float) -> 'Quaternion':
-        """从欧拉角（度数）创建四元数"""
-        x, y, z, w = eulerToQuaternionDegrees(rollDeg, pitchDeg, yawDeg)
-        return Quaternion(x, y, z, w)
 
     @staticmethod
     def fromAxisAngle(axis: V3, angle: float) -> 'Quaternion':

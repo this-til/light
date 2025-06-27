@@ -236,6 +236,9 @@ class ActionComponent(Component):
         '''
         执行反航操作
         '''
+        node_process = subprocess.Popen(['rosrun', 'roscar_pkg', 'roscar_return_base'])
+        #node_process.wait()
+        await asyncio.get_event_loop().run_in_executor(None, node_process.wait)
 
         pass
 
@@ -245,12 +248,12 @@ class ActionComponent(Component):
         :return:
         '''
 
-        await self.calibration()
-
         await self.main.exclusiveServerReportComponent.openRollingDoor()
 
-        # TODO 前进到基站
-
+        await self.calibrationByAngle()
+        
+        await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x = 0.3), time=4)
+ 
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
         pass
@@ -308,7 +311,7 @@ class ActionComponent(Component):
 
         try:
             max_iterations = 40  # 最大调整次数
-            tolerance = 3  # 像素容差
+            tolerance = 5  # 像素容差
 
             for iteration in range(max_iterations):
                 crosshair: util.V2 | None = await self.getCrosshairPosition(queue)
@@ -362,7 +365,7 @@ class ActionComponent(Component):
         self.main.motionComponent.stopMotion()
 
         # 根据X轴偏差方向移动
-        if abs(offset_x) > 3:  # 只有偏差大于3像素才移动
+        if abs(offset_x) > 5:  # 只有偏差大于3像素才移动
             if offset_x > 0:
                 # 十字准星在右侧，车需要向右移动（负Y方向）
                 velocity = util.Velocity.create(linear_y=-calibration_speed)
@@ -389,7 +392,7 @@ class ActionComponent(Component):
 
         try:
             max_iterations = 40  # 最大调整次数
-            center_tolerance = 3  # 中心容差（像素）
+            center_tolerance = 5  # 中心容差（像素）
 
             self.logger.info("开始姿势调整（仅旋转z轴）...")
 
@@ -446,7 +449,7 @@ class ActionComponent(Component):
         self.logger.info(f"调整车辆角度: 偏差{offset}, 使用角速度{calibration_speed:.2f}")
 
         self.main.motionComponent.stopMotion()
-        if abs(offset_x) > 3:
+        if abs(offset_x) > 5:
             if offset_x > 0:
                 velocity = util.Velocity.create(angular_z=-calibration_speed)
             else:
@@ -754,6 +757,7 @@ class ActionComponent(Component):
             target_position = util.V3(targetDistance, 0, 0)
             await self.actionNavToPosition(target_position)
 
+            await self.returnVoyage()
 
             await self.inCabin()
 
@@ -763,10 +767,6 @@ class ActionComponent(Component):
             await self.closeMapping()
         pass
 
-    async def returnBase(self):
-        node_process = subprocess.Popen(['rosrun', 'roscar_pkg', 'roscar_return_base'])
-        #node_process.wait()
-        await asyncio.get_event_loop().run_in_executor(None, node_process.wait)
 
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
@@ -793,12 +793,15 @@ class ActionComponent(Component):
 
                 if key == "exitCabin":
                     await self.exitCabin()
+                    
+                if key == "inCabin":
+                    await self.inCabin()
 
                 if key == "calibration":
                     await self.calibration()
                     
-                if key == "returnBase":
-                    await self.returnBase()
+                if key == "returnVoyage":
+                    await self.returnVoyage()
 
                 if key == "calibrationByAngle":
                     await self.calibrationByAngle()
@@ -829,7 +832,13 @@ class ActionComponent(Component):
                             self.logger.warning(f"目标距离超出范围: {target_distance}m (有效范围: 0.1m - 10.0m)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的距离格式: {key}, 错误: {str(e)}")
-
+                        
+                if key == "turnLeft_45":
+                    await self.main.motionComponent.motionTimeWithComponents(angular=util.V3(z = 0.8), time=0.5)
+                    
+                if key == "turnRight_45":
+                    await self.main.motionComponent.motionTimeWithComponents(angular=util.V3(z = -0.8), time=0.5)
+                    
             except asyncio.CancelledError:
                 raise
             except Exception as e:

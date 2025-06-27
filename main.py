@@ -124,6 +124,7 @@ class Mian:
         from motion import MotionComponent
         from broadcast import BroadcastComponent
         from key import KeyComponent
+        from imu import ImuComponent
         
         self.rosAccessComponent = RosAccessComponent()
         self.configureComponent = ConfigureComponent()
@@ -136,6 +137,7 @@ class Mian:
         self.motionComponent = MotionComponent()
         self.broadcastComponent = BroadcastComponent()
         self.KeyComponent = KeyComponent()
+        self.imuComponent = ImuComponent()
         
 
         self.components.append(self.rosAccessComponent)
@@ -149,6 +151,7 @@ class Mian:
         self.components.append(self.motionComponent)
         self.components.append(self.broadcastComponent)
         self.components.append(self.KeyComponent)
+        self.components.append(self.imuComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
