@@ -79,7 +79,7 @@ class ConfigureComponent(Component):
         asyncio.create_task(self.saveConfigureLoop())
 
     def getPriority(self) -> int:
-        return 1 << 12
+        return 1 << 31
 
     def getConfigure(self, key: str):
         return util.getFromJson(key, self.configureMap)

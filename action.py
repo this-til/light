@@ -38,8 +38,8 @@ class ActionComponent(Component):
     async def awakeInit(self):
         await super().awakeInit()
 
-        self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
-        self.actionClient.wait_for_server()
+        #self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
+        #self.actionClient.wait_for_server()
 
         asyncio.create_task(self.instructionLoop())
         
