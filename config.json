@@ -31,8 +31,9 @@
   "MotionComponent": {
     "speed": 0.3
   },
-  "LaserRadarComponent": {
-    "roscarMappingLaunchPath": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_mapping.launch"
+  "RosAccessComponent": {
+    "baseLaunch": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_base.launch",
+    "mapLaunch": "/home/cat/catkin_ws/src/roscar_pkg/launch/roscar_map.launch"
   },
   "BroadcastComponent" : {
     "#soundSource" : "/home/cat/catkin_ws/src/roscar_pkg/sound",

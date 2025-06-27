@@ -159,11 +159,11 @@ class Mian:
         from report import ExclusiveServerReportComponent
         from state import StateComponent
         from command import CommandComponent
-        from laser_radar import LaserRadarComponent
         from action import ActionComponent
         from motion import MotionComponent
         from broadcast import BroadcastComponent
         from key import KeyComponent
+        from ros_access import RosAccessComponent
 
         self.configureComponent = ConfigureComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
@@ -171,11 +171,11 @@ class Mian:
         self.detectionComponent = DetectionComponent()
         self.stateComponent = StateComponent()
         self.commandComponent = CommandComponent()
-        self.laserRadarComponent = LaserRadarComponent()
         self.actionComponent = ActionComponent()
         self.motionComponent = MotionComponent()
         self.broadcastComponent = BroadcastComponent()
         self.KeyComponent = KeyComponent()
+        self.rosAccessComponent = RosAccessComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.orbbecCameraComponent)
@@ -183,11 +183,11 @@ class Mian:
         self.components.append(self.detectionComponent)
         self.components.append(self.stateComponent)
         self.components.append(self.commandComponent)
-        self.components.append(self.laserRadarComponent)
         self.components.append(self.actionComponent)
         self.components.append(self.motionComponent)
         self.components.append(self.broadcastComponent)
         self.components.append(self.KeyComponent)
+        self.components.append(self.rosAccessComponent)
 
         for component in self.components:
             component.main = self  # type: ignore

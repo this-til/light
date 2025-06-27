@@ -31,8 +31,10 @@ class DepthResult:
 
 
 class ActionComponent(Component):
-    actionClient = None
+    actionClient : actionlib.SimpleActionClient | None = None
 
+    mappingLock : asyncio.Lock = asyncio.Lock()
+    
     async def awakeInit(self):
         await super().awakeInit()
 
@@ -40,8 +42,29 @@ class ActionComponent(Component):
         self.actionClient.wait_for_server()
 
         asyncio.create_task(self.instructionLoop())
+        
+    async def startMapping(self):
+        if self.actionClient is not None:
+            return
+        async with self.mappingLock:
+            if self.actionClient is not None:
+                return
+            self.main.rosAccessComponent.mapLaunchFile.start()
+            self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
+            #self.actionClient.wait_for_server()
+            await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_server)
 
+    async def closeMapping(self):
+        if self.actionClient is None:
+            return
+        async with self.mappingLock:
+            if self.actionClient is None:
+                return
+            self.main.rosAccessComponent.mapLaunchFile.shutdown()
+            self.actionClient = None
+        
     async def actionNav(self, x_axle=1, y_axle=0, x=0, y=0, z=0, w=0):
+        
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "map"
         goal.target_pose.header.stamp = rospy.Time.now()
@@ -61,8 +84,8 @@ class ActionComponent(Component):
         self.actionClient.send_goal(goal)
         self.logger.info("开始导航")
 
-        #self.actionClient.wait_for_result()
-        await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result)
+        self.actionClient.wait_for_result()
+        #await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result)
 
         return self.actionClient.get_state()
 
@@ -690,6 +713,12 @@ class ActionComponent(Component):
 
             try:
                 key = await queue.get()
+
+                if key == "startMapping":
+                    await self.startMapping()
+
+                if key == "closeMapping":
+                    await self.closeMapping()
 
                 if key == "open":
                     await self.main.exclusiveServerReportComponent.openRollingDoor()
