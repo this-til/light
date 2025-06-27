@@ -41,31 +41,6 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")  # 定义泛型类型
 
-class ROSLogHandler(logging.Handler):
-    """将 Python logging 重定向到 ROS 日志系统"""
-    
-    def emit(self, record):
-        ## 映射日志级别到 ROS 对应函数
-        #log_functions = {
-        #    logging.DEBUG: rospy.logdebug,
-        #    logging.INFO: rospy.loginfo,
-        #    logging.WARNING: rospy.logwarn,
-        #    logging.ERROR: rospy.logerr,
-        #    logging.CRITICAL: rospy.logfatal
-        #}
-        #
-        ## 获取匹配的 ROS 日志函数（默认使用 logerr）
-        #log_func = log_functions.get(record.levelno, rospy.logerr)
-        #
-        ## 格式化日志消息并发送到 ROS
-        #message = self.format(record)
-        #log_func(message)
-        
-        try:
-            print(self.format(record))
-        except Exception as e:
-            pass
-        
 
 class ConfigField(Generic[T]):
     default: T = None  # type: ignore
@@ -138,21 +113,8 @@ class Mian:
         pass
 
     async def main(self):
-    
-        rospy.init_node("car_python")
-        
-        handler = ROSLogHandler()
-        
-        formatter = logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s")
-        handler.setFormatter(formatter)
-        
-        root_logger = logging.getLogger()
-        root_logger.addHandler(handler)
 
-        log_level = rospy.get_param("~log_level", "DEBUG")
-        root_logger.setLevel(log_level)
-        
-    
+        from ros_access import RosAccessComponent
         from configure import ConfigureComponent
         from orbbec_camera import OrbbecCameraComponent
         from detection import DetectionComponent
@@ -163,8 +125,8 @@ class Mian:
         from motion import MotionComponent
         from broadcast import BroadcastComponent
         from key import KeyComponent
-        from ros_access import RosAccessComponent
-
+        
+        self.rosAccessComponent = RosAccessComponent()
         self.configureComponent = ConfigureComponent()
         self.orbbecCameraComponent = OrbbecCameraComponent()
         self.exclusiveServerReportComponent = ExclusiveServerReportComponent()
@@ -175,8 +137,9 @@ class Mian:
         self.motionComponent = MotionComponent()
         self.broadcastComponent = BroadcastComponent()
         self.KeyComponent = KeyComponent()
-        self.rosAccessComponent = RosAccessComponent()
+        
 
+        self.components.append(self.rosAccessComponent)
         self.components.append(self.configureComponent)
         self.components.append(self.orbbecCameraComponent)
         self.components.append(self.exclusiveServerReportComponent)
@@ -187,7 +150,6 @@ class Mian:
         self.components.append(self.motionComponent)
         self.components.append(self.broadcastComponent)
         self.components.append(self.KeyComponent)
-        self.components.append(self.rosAccessComponent)
 
         for component in self.components:
             component.main = self  # type: ignore
