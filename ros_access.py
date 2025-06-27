@@ -23,69 +23,6 @@ from typing import Generic, TypeVar
 from main import Component, ConfigField
 
 
-class LogHandler(logging.Handler):
-    """智能日志处理器，在输入时缓存日志"""
-    
-    def __init__(self):
-        super().__init__()
-        self.pending_logs = []
-        self.is_inputting = False
-        self.lock = threading.Lock()
-        self.input_component = None
-        
-    def set_input_state(self, is_inputting: bool):
-        """设置输入状态"""
-        with self.lock:
-            self.is_inputting = is_inputting
-            if not is_inputting and self.pending_logs:
-                # 输入结束，输出所有缓存的日志
-                for log_msg in self.pending_logs:
-                    print(log_msg)
-                self.pending_logs.clear()
-                # 重新显示提示符
-                if self.input_component and hasattr(self.input_component, 'display_prompt_and_input'):
-                    try:
-                        self.input_component.display_prompt_and_input()
-                    except:
-                        pass  # 如果显示失败就忽略
-    
-    def add_pending_log(self, log_msg: str) -> bool:
-        """添加待处理日志，返回是否被缓存"""
-        with self.lock:
-            if self.is_inputting:
-                self.pending_logs.append(log_msg)
-                # 限制缓存大小，避免内存过度使用
-                if len(self.pending_logs) > 100:
-                    self.pending_logs.pop(0)
-                return True
-            return False
-    
-    def set_input_component(self, component):
-        """设置输入组件引用"""
-        self.input_component = component
-    
-    def emit(self, record):
-        try:
-            formatted_msg = self.format(record)
-            
-            # 检查是否在输入状态，如果是则缓存日志
-            if not self.add_pending_log(formatted_msg):
-                # 不在输入状态，直接输出
-                print(formatted_msg)
-                
-        except Exception as e:
-            # 发生异常时直接输出，避免日志丢失
-            try:
-                print(self.format(record))
-            except:
-                pass
-
-
-# 全局日志处理器实例
-global_log_handler = LogHandler()
-        
-
-
 class RosAccessComponent (Component):
     
     baseLaunch : ConfigField[str] = ConfigField()
@@ -93,6 +30,68 @@ class RosAccessComponent (Component):
     
     roscoreProcess = None
     
+    def __init__(self):
+        super().__init__()
+        # 初始化日志处理器
+        self.log_handler = self.LogHandler()
+    
+    class LogHandler(logging.Handler):
+        """智能日志处理器，在输入时缓存日志"""
+        
+        def __init__(self):
+            super().__init__()
+            self.pending_logs = []
+            self.is_inputting = False
+            self.lock = threading.Lock()
+            self.input_component = None
+            
+        def set_input_state(self, is_inputting: bool):
+            """设置输入状态"""
+            with self.lock:
+                self.is_inputting = is_inputting
+                if not is_inputting and self.pending_logs:
+                    # 输入结束，输出所有缓存的日志
+                    for log_msg in self.pending_logs:
+                        print(log_msg)
+                    self.pending_logs.clear()
+                    # 重新显示提示符
+                    if self.input_component and hasattr(self.input_component, 'display_prompt_and_input'):
+                        try:
+                            self.input_component.display_prompt_and_input()
+                        except:
+                            pass  # 如果显示失败就忽略
+        
+        def add_pending_log(self, log_msg: str) -> bool:
+            """添加待处理日志，返回是否被缓存"""
+            with self.lock:
+                if self.is_inputting:
+                    self.pending_logs.append(log_msg)
+                    # 限制缓存大小，避免内存过度使用
+                    if len(self.pending_logs) > 100:
+                        self.pending_logs.pop(0)
+                    return True
+                return False
+        
+        def set_input_component(self, component):
+            """设置输入组件引用"""
+            self.input_component = component
+        
+        def emit(self, record):
+            try:
+                formatted_msg = self.format(record)
+                
+                # 检查是否在输入状态，如果是则缓存日志
+                if not self.add_pending_log(formatted_msg):
+                    # 不在输入状态，直接输出
+                    print(formatted_msg)
+                    
+            except Exception as e:
+                # 发生异常时直接输出，避免日志丢失
+                try:
+                    print(self.format(record))
+                except:
+                    pass
+
     def isRosMasterRunning(self):
         """检查 ROS Master 是否正在运行"""
         try:
@@ -189,9 +188,9 @@ class RosAccessComponent (Component):
         if not rospy.is_shutdown():
             self.logger.info("ROS 节点运行正常")
         
-        # 配置全局日志处理器
+        # 配置日志处理器
         formatter = logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s")
-        global_log_handler.setFormatter(formatter)
+        self.log_handler.setFormatter(formatter)
         
         root_logger = logging.getLogger()
         
@@ -199,11 +198,10 @@ class RosAccessComponent (Component):
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
             
-        root_logger.addHandler(global_log_handler)
+        root_logger.addHandler(self.log_handler)
         root_logger.setLevel("DEBUG")
         
         self.logger.info("日志处理器配置完成")
-        
 
         self.baseLaunchFile = roslaunch.parent.ROSLaunchParent(
             roslaunch.rlutil.get_or_generate_uuid(None, False),

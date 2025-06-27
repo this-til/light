@@ -12,75 +12,17 @@ import util
 from main import Component, ConfigField
 
 
-# 全局输入状态管理
-class InputStateManager:
-    _instance = None
-    _lock = asyncio.Lock()
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.is_inputting = False
-            cls._instance.pending_logs = []
-            cls._instance.input_component = None
-            cls._instance.log_handler = None
-        return cls._instance
-    
-    def set_log_handler(self, handler):
-        """设置日志处理器引用"""
-        self.log_handler = handler
-        if handler:
-            handler.set_input_component(self.input_component)
-    
-    async def set_inputting(self, state: bool):
-        async with self._lock:
-            self.is_inputting = state
-            
-            # 同步状态到日志处理器
-            if self.log_handler:
-                self.log_handler.set_input_state(state)
-            
-            if not state and self.pending_logs:
-                # 输入结束，输出缓存的日志
-                for log_msg in self.pending_logs:
-                    print(log_msg)
-                self.pending_logs.clear()
-                # 重新显示提示符
-                if self.input_component:
-                    self.input_component.display_prompt_and_input()
-    
-    async def add_pending_log(self, log_msg: str):
-        async with self._lock:
-            if self.is_inputting:
-                self.pending_logs.append(log_msg)
-                return True  # 表示日志被缓存
-            return False  # 表示可以直接输出
-    
-    def set_input_component(self, component):
-        self.input_component = component
-        # 如果已经有日志处理器，也更新它的组件引用
-        if self.log_handler:
-            self.log_handler.set_input_component(component)
-
-
-# 全局状态管理器实例
-input_state_manager = InputStateManager()
-
-
-# 尝试导入全局日志处理器
-try:
-    from ros_access import global_log_handler
-    input_state_manager.set_log_handler(global_log_handler)
-except ImportError:
-    # 如果无法导入，创建一个临时的占位符
-    pass
-
-
 class KeyComponent(Component):
     keyEvent: util.Broadcaster[str] = util.Broadcaster()
     
     def __init__(self):
         super().__init__()
+        # 输入状态管理
+        self.is_inputting = False
+        self.pending_logs = []
+        self.log_handler = None
+        self._lock = asyncio.Lock()
+        
         # 命令历史记录
         self.command_history: deque[str] = deque(maxlen=100)  # 最多保存100条历史
         self.history_index: int = -1  # 当前历史索引，-1表示最新
@@ -94,18 +36,39 @@ class KeyComponent(Component):
         # 加载历史记录
         self.load_command_history()
 
+    def set_log_handler(self, handler):
+        """设置日志处理器引用"""
+        self.log_handler = handler
+        if handler:
+            handler.set_input_component(self)
+    
+    async def set_inputting(self, state: bool):
+        """设置输入状态"""
+        async with self._lock:
+            self.is_inputting = state
+            
+            # 同步状态到日志处理器
+            if self.log_handler:
+                self.log_handler.set_input_state(state)
+            
+            if not state and self.pending_logs:
+                # 输入结束，输出缓存的日志
+                for log_msg in self.pending_logs:
+                    print(log_msg)
+                self.pending_logs.clear()
+                # 重新显示提示符
+                self.display_prompt_and_input()
+    
+    async def add_pending_log(self, log_msg: str):
+        """添加待处理日志"""
+        async with self._lock:
+            if self.is_inputting:
+                self.pending_logs.append(log_msg)
+                return True  # 表示日志被缓存
+            return False  # 表示可以直接输出
+
     async def init(self):
         await super().init()
-        
-        # 注册到输入状态管理器
-        input_state_manager.set_input_component(self)
-        
-        # 尝试重新设置日志处理器连接
-        try:
-            from ros_access import global_log_handler
-            input_state_manager.set_log_handler(global_log_handler)
-        except ImportError:
-            self.logger.warning("无法连接到全局日志处理器")
         
         # 获取终端宽度
         try:
@@ -116,6 +79,19 @@ class KeyComponent(Component):
         self.logger.info(f"终端宽度: {self.terminal_width}")
         
         asyncio.create_task(self.keyboardListener())
+
+    async def initBack(self):
+        await super().initBack()
+        
+        # 通过 main 获取 RosAccessComponent 的日志处理器
+        try:
+            if hasattr(self.main, 'rosAccessComponent') and hasattr(self.main.rosAccessComponent, 'log_handler'):
+                self.set_log_handler(self.main.rosAccessComponent.log_handler)
+                self.logger.info("已连接到 RosAccessComponent 的日志处理器")
+            else:
+                self.logger.warning("无法找到 RosAccessComponent 或其日志处理器")
+        except Exception as e:
+            self.logger.error(f"连接日志处理器失败: {e}")
 
     def load_command_history(self):
         """从文件加载命令历史"""
@@ -265,15 +241,15 @@ class KeyComponent(Component):
                                     
                                     if char3 == 'A':  # 上箭头
                                         # 如果有历史记录可浏览，启用输入状态
-                                        if self.command_history and not input_state_manager.is_inputting:
-                                            await input_state_manager.set_inputting(True)
+                                        if self.command_history and not self.is_inputting:
+                                            await self.set_inputting(True)
                                         self.navigate_history("up")
                                         self.display_prompt_and_input()
                                         continue
                                     elif char3 == 'B':  # 下箭头
                                         # 如果有历史记录可浏览，启用输入状态
-                                        if self.command_history and not input_state_manager.is_inputting:
-                                            await input_state_manager.set_inputting(True)
+                                        if self.command_history and not self.is_inputting:
+                                            await self.set_inputting(True)
                                         self.navigate_history("down")
                                         self.display_prompt_and_input()
                                         continue
@@ -297,7 +273,7 @@ class KeyComponent(Component):
                             
                             if command:
                                 # 暂停输入状态，允许日志输出
-                                await input_state_manager.set_inputting(False)
+                                await self.set_inputting(False)
                                 
                                 self.add_to_history(command)
                                 self.logger.info(f"执行命令: {command}")
@@ -323,7 +299,7 @@ class KeyComponent(Component):
                                 await asyncio.sleep(0.1)  # 给命令处理一些时间
                             else:
                                 # 空命令，立即恢复输入状态
-                                await input_state_manager.set_inputting(False)
+                                await self.set_inputting(False)
                             
                             # 重置输入状态
                             self.current_input = ""
@@ -342,13 +318,13 @@ class KeyComponent(Component):
                                 self.cursor_position -= 1
                                 
                                 # 如果输入被清空，释放输入状态以允许日志输出
-                                if not self.current_input and input_state_manager.is_inputting:
-                                    await input_state_manager.set_inputting(False)
+                                if not self.current_input and self.is_inputting:
+                                    await self.set_inputting(False)
                                 
                                 self.display_prompt_and_input()
                                 
                         elif ord(char) == 3:  # Ctrl+C
-                            await input_state_manager.set_inputting(False)
+                            await self.set_inputting(False)
                             sys.stdout.write('\n退出程序...\n')
                             sys.stdout.flush()
                             await self.keyEvent.publish("exit")
@@ -356,7 +332,7 @@ class KeyComponent(Component):
                             
                         elif ord(char) == 4:  # Ctrl+D
                             if not self.current_input:
-                                await input_state_manager.set_inputting(False)
+                                await self.set_inputting(False)
                                 sys.stdout.write('\n退出程序...\n')
                                 sys.stdout.flush()
                                 await self.keyEvent.publish("exit")
@@ -364,24 +340,24 @@ class KeyComponent(Component):
                                 
                         elif ord(char) == 12:  # Ctrl+L
                             # 清屏，不启用输入状态
-                            await input_state_manager.set_inputting(False)
+                            await self.set_inputting(False)
                             os.system('clear' if os.name != 'nt' else 'cls')
                             self.display_prompt_and_input()
                             
                         elif ord(char) == 18:  # Ctrl+R - 显示历史记录
                             # 显示历史记录，不启用输入状态
-                            await input_state_manager.set_inputting(False)
+                            await self.set_inputting(False)
                             self.show_command_history()
                             
                         elif ord(char) == 9:  # Tab键 - 命令提示
                             # 显示命令提示，不启用输入状态
-                            await input_state_manager.set_inputting(False)
+                            await self.set_inputting(False)
                             self.show_command_suggestions()
                             
                         elif 32 <= ord(char) <= 126:  # 可打印字符
                             # 如果用户开始输入，启用输入状态（阻断日志）
-                            if not input_state_manager.is_inputting:
-                                await input_state_manager.set_inputting(True)
+                            if not self.is_inputting:
+                                await self.set_inputting(True)
                             
                             self.current_input = (
                                 self.current_input[:self.cursor_position] + 
@@ -403,7 +379,7 @@ class KeyComponent(Component):
                     
         finally:
             # 清理输入状态
-            await input_state_manager.set_inputting(False)
+            await self.set_inputting(False)
             self.restore_terminal()
             self.save_command_history()
 
@@ -561,20 +537,17 @@ class KeyComponent(Component):
         sys.stdout.write('\n=== 日志处理状态 ===\n')
         
         # 显示输入状态管理器状态
-        sys.stdout.write(f'输入状态: {"输入中" if input_state_manager.is_inputting else "空闲"}\n')
-        sys.stdout.write(f'缓存日志数量: {len(input_state_manager.pending_logs)}\n')
+        sys.stdout.write(f'输入状态: {"输入中" if self.is_inputting else "空闲"}\n')
+        sys.stdout.write(f'缓存日志数量: {len(self.pending_logs)}\n')
         
         # 显示日志处理器状态
-        if input_state_manager.log_handler:
-            with input_state_manager.log_handler.lock:
+        if self.log_handler:
+            with self.log_handler.lock:
                 sys.stdout.write(f'日志处理器状态: 已连接\n')
-                sys.stdout.write(f'日志处理器输入状态: {"输入中" if input_state_manager.log_handler.is_inputting else "空闲"}\n')
-                sys.stdout.write(f'日志处理器缓存数量: {len(input_state_manager.log_handler.pending_logs)}\n')
+                sys.stdout.write(f'日志处理器输入状态: {"输入中" if self.log_handler.is_inputting else "空闲"}\n')
+                sys.stdout.write(f'日志处理器缓存数量: {len(self.log_handler.pending_logs)}\n')
         else:
             sys.stdout.write('日志处理器状态: 未连接\n')
-        
-        # 显示组件连接状态
-        sys.stdout.write(f'输入组件: {"已连接" if input_state_manager.input_component else "未连接"}\n')
         
         sys.stdout.write('==================\n')
         # 显示提示符但不启用输入状态
