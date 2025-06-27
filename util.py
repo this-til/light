@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import platform
 import re
 from ctypes import Structure
@@ -946,3 +947,96 @@ def brightnessNormalization(img, target_mean=128):
     normalized_img = normalized_img.astype(np.uint8)
 
     return normalized_img
+
+
+def eulerToQuaternion(roll: float, pitch: float, yaw: float) -> Tuple[float, float, float, float]:
+    """
+    将欧拉角转换为四元数
+    
+    参数:
+        roll: 绕X轴的旋转角度（弧度）
+        pitch: 绕Y轴的旋转角度（弧度）  
+        yaw: 绕Z轴的旋转角度（弧度）
+    
+    返回:
+        tuple: (x, y, z, w) 四元数表示
+    """
+    # 计算半角的三角函数值
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    # 计算四元数分量
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+
+    return (x, y, z, w)
+
+
+def eulerToQuaternionDegrees(rollDeg: float, pitchDeg: float, yawDeg: float) -> Tuple[float, float, float, float]:
+    """
+    将欧拉角（度数）转换为四元数
+    
+    参数:
+        rollDeg: 绕X轴的旋转角度（度）
+        pitchDeg: 绕Y轴的旋转角度（度）
+        yawDeg: 绕Z轴的旋转角度（度）
+    
+    返回:
+        tuple: (x, y, z, w) 四元数表示
+    """
+    # 将度数转换为弧度
+    roll = math.radians(rollDeg)
+    pitch = math.radians(pitchDeg)
+    yaw = math.radians(yawDeg)
+    
+    return eulerToQuaternion(roll, pitch, yaw)
+
+
+def quaternionToEuler(x: float, y: float, z: float, w: float) -> Tuple[float, float, float]:
+    """
+    将四元数转换为欧拉角（弧度）
+    
+    参数:
+        x, y, z, w: 四元数分量
+    
+    返回:
+        tuple: (roll, pitch, yaw) 欧拉角（弧度）
+    """
+    # 计算roll (x轴旋转)
+    sinRollCosP = 2 * (w * x + y * z)
+    cosRollCosP = 1 - 2 * (x * x + y * y)
+    roll = math.atan2(sinRollCosP, cosRollCosP)
+
+    # 计算pitch (y轴旋转)
+    sinPitch = 2 * (w * y - z * x)
+    if abs(sinPitch) >= 1:
+        pitch = math.copysign(math.pi / 2, sinPitch)  # 使用90度，避免万向锁
+    else:
+        pitch = math.asin(sinPitch)
+
+    # 计算yaw (z轴旋转)
+    sinYawCosP = 2 * (w * z + x * y)
+    cosYawCosP = 1 - 2 * (y * y + z * z)
+    yaw = math.atan2(sinYawCosP, cosYawCosP)
+
+    return (roll, pitch, yaw)
+
+
+def quaternionToEulerDegrees(x: float, y: float, z: float, w: float) -> Tuple[float, float, float]:
+    """
+    将四元数转换为欧拉角（度数）
+    
+    参数:
+        x, y, z, w: 四元数分量
+    
+    返回:
+        tuple: (rollDeg, pitchDeg, yawDeg) 欧拉角（度）
+    """
+    roll, pitch, yaw = quaternionToEuler(x, y, z, w)
+    return (math.degrees(roll), math.degrees(pitch), math.degrees(yaw))
