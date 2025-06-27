@@ -1,4 +1,3 @@
-
 import roslaunch
 import roslaunch.parent
 import roslaunch.rlutil
@@ -28,9 +27,9 @@ class RosAccessComponent (Component):
     baseLaunch : ConfigField[str] = ConfigField()
     mapLaunch : ConfigField[str] = ConfigField()
     
-    roscore_process = None
+    roscoreProcess = None
     
-    def is_ros_master_running(self):
+    def isRosMasterRunning(self):
         """检查 ROS Master 是否正在运行"""
         try:
             # 使用 rosgraph 检查 master 是否可用
@@ -40,13 +39,13 @@ class RosAccessComponent (Component):
         except Exception:
             return False
     
-    def start_ros_master(self):
+    def startRosMaster(self):
         """启动 ROS Master (roscore)"""
         try:
-            print("ROS Master 未运行，正在启动 roscore...")
+            self.logger.info("ROS Master 未运行，正在启动 roscore...")
             
             # 启动 roscore 进程
-            self.roscore_process = subprocess.Popen(
+            self.roscoreProcess = subprocess.Popen(
                 ['roscore'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -54,76 +53,76 @@ class RosAccessComponent (Component):
             )
             
             # 等待 ROS Master 启动
-            max_wait_time = 30  # 最大等待30秒
-            wait_interval = 0.5  # 每0.5秒检查一次
-            waited_time = 0
+            maxWaitTime = 30  # 最大等待30秒
+            waitInterval = 0.5  # 每0.5秒检查一次
+            waitedTime = 0
             
-            while waited_time < max_wait_time:
-                if self.is_ros_master_running():
-                    print(f"ROS Master 启动成功！用时 {waited_time:.1f} 秒")
+            while waitedTime < maxWaitTime:
+                if self.isRosMasterRunning():
+                    self.logger.info(f"ROS Master 启动成功！用时 {waitedTime:.1f} 秒")
                     return True
                     
-                time.sleep(wait_interval)
-                waited_time += wait_interval
-                print(f"等待 ROS Master 启动... ({waited_time:.1f}s)")
+                time.sleep(waitInterval)
+                waitedTime += waitInterval
+                self.logger.debug(f"等待 ROS Master 启动... ({waitedTime:.1f}s)")
             
-            print("ROS Master 启动超时！")
+            self.logger.error("ROS Master 启动超时！")
             return False
             
         except Exception as e:
-            print(f"启动 ROS Master 时出错: {e}")
+            self.logger.error(f"启动 ROS Master 时出错: {e}")
             return False
     
-    def stop_ros_master(self):
+    def stopRosMaster(self):
         """停止 ROS Master"""
-        if self.roscore_process:
+        if self.roscoreProcess:
             try:
-                print("正在停止 ROS Master...")
+                self.logger.info("正在停止 ROS Master...")
                 if os.name == 'nt':  # Windows
-                    self.roscore_process.terminate()
+                    self.roscoreProcess.terminate()
                 else:  # Unix/Linux
-                    os.killpg(os.getpgid(self.roscore_process.pid), signal.SIGTERM)
+                    os.killpg(os.getpgid(self.roscoreProcess.pid), signal.SIGTERM)
                 
-                self.roscore_process.wait(timeout=5)
-                print("ROS Master 已停止")
+                self.roscoreProcess.wait(timeout=5)
+                self.logger.info("ROS Master 已停止")
             except Exception as e:
-                print(f"停止 ROS Master 时出错: {e}")
+                self.logger.error(f"停止 ROS Master 时出错: {e}")
             finally:
-                self.roscore_process = None
+                self.roscoreProcess = None
     
     async def awakeInit(self):
         await super().awakeInit()
         
         # 首先检查 ROS Master 是否运行，如果没有则启动它
-        if not self.is_ros_master_running():
-            print("检测到 ROS Master 未运行")
-            if not self.start_ros_master():
+        if not self.isRosMasterRunning():
+            self.logger.info("检测到 ROS Master 未运行")
+            if not self.startRosMaster():
                 raise Exception("无法启动 ROS Master，请检查 ROS 环境配置")
         else:
-            print("ROS Master 已经在运行")
+            self.logger.info("ROS Master 已经在运行")
         
         # 检查 rospy 是否已经启动，如果未启动则主动启动
         try:
             # 尝试获取 ROS 时间来检查是否已经初始化
             rospy.get_rostime()
-            print("ROS 节点已经初始化")
+            self.logger.info("ROS 节点已经初始化")
         except rospy.exceptions.ROSInitException:
             # rospy 未初始化，主动启动
-            print("ROS 节点未初始化，正在启动...")
+            self.logger.info("ROS 节点未初始化，正在启动...")
             rospy.init_node("car_python")
-            print("ROS 节点初始化完成")
+            self.logger.info("ROS 节点初始化完成")
         except Exception as e:
             # 其他异常，说明可能未初始化或有其他问题
-            print(f"检查 ROS 状态时出现异常，尝试初始化: {e}")
+            self.logger.info(f"检查 ROS 状态时出现异常，尝试初始化: {e}")
             try:
                 rospy.init_node("car_python")
-                print("ROS 节点初始化完成")
-            except rospy.exceptions.ROSException as ros_e:
-                print(f"ROS 节点可能已经初始化: {ros_e}")
+                self.logger.info("ROS 节点初始化完成")
+            except rospy.exceptions.ROSException as rosE:
+                self.logger.warning(f"ROS 节点可能已经初始化: {rosE}")
             
         # 确保 ROS 节点正常运行
         if not rospy.is_shutdown():
-            rospy.loginfo("ROS 节点运行正常")
+            self.logger.info("ROS 节点运行正常")
     
 
         self.baseLaunchFile = roslaunch.parent.ROSLaunchParent(
@@ -157,8 +156,8 @@ class RosAccessComponent (Component):
                 self.logger.info("地图 launch 文件已停止")
             
             # 如果 ROS Master 是由此组件启动的，则停止它
-            if self.roscore_process:
-                self.stop_ros_master()
+            if self.roscoreProcess:
+                self.stopRosMaster()
                 self.logger.info("ROS Master 已停止")
                 
         except Exception as e:
