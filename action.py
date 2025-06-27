@@ -9,6 +9,7 @@ import actionlib
 import cv2
 import rospy
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+import subprocess
 
 import util
 from detection import Cell
@@ -762,6 +763,11 @@ class ActionComponent(Component):
             await self.closeMapping()
         pass
 
+    async def returnBase(self):
+        node_process = subprocess.Popen(['rosrun', 'roscar_pkg', 'roscar_return_base'])
+        #node_process.wait()
+        await asyncio.get_event_loop().run_in_executor(None, node_process.wait)
+
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
@@ -769,6 +775,9 @@ class ActionComponent(Component):
 
             try:
                 key = await queue.get()
+                
+                if key == "demonstration":
+                    await self.demonstration()
 
                 if key == "startMapping":
                     await self.startMapping()
@@ -787,6 +796,9 @@ class ActionComponent(Component):
 
                 if key == "calibration":
                     await self.calibration()
+                    
+                if key == "returnBase":
+                    await self.returnBase()
 
                 if key == "calibrationByAngle":
                     await self.calibrationByAngle()
