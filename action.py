@@ -758,9 +758,17 @@ class ActionComponent(Component):
             distance = await self.multipleDepthImageCalculateDistance(5, None)
             targetDistance = distance - 0.3
 
+            asyncio.create_task(self.main.broadcastComponent.playAudio("发现着火目标，正在前往"))
+
             # 使用 Pose 对象创建目标位置
             target_position = util.V3(targetDistance, 0, 0)
             await self.actionNavToPosition(target_position)
+
+            asyncio.create_task(self.main.broadcastComponent.playAudio("已到达着火地点，开始灭火"))
+
+            await asyncio.sleep(3)
+
+            asyncio.create_task(self.main.broadcastComponent.playAudio("完成灭火操作，正在返航"))
 
             await self.returnVoyage()
 
@@ -798,7 +806,7 @@ class ActionComponent(Component):
             try:
                 key = await queue.get()
 
-                if key == "acceptDispatched":
+                if key == "Dispatched":
                     await self.demonstration()
 
             except asyncio.CancelledError:
