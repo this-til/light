@@ -9,7 +9,7 @@ class ImuComponent(Component):
     
     async def init(self):
         await super().init()
-        rospy.Subscriber("/wit/imu", Imu, self.imuCallback)
+        rospy.Subscriber("/imu", Imu, self.imuCallback)
         
     def imuCallback(self, msg : Imu):
         orientation = msg.orientation
