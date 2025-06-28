@@ -118,6 +118,7 @@ class Mian:
         from key import KeyComponent
         from carousel import CarouselComponent
         from gpio import GpioComponent
+        from action import ActionComponent
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
@@ -138,6 +139,7 @@ class Mian:
         self.keyComponent = KeyComponent()
         self.carouselComponent = CarouselComponent()
         self.gpioComponent = GpioComponent()
+        self.actionComponent = ActionComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
@@ -158,6 +160,7 @@ class Mian:
         self.components.append(self.keyComponent)
         self.components.append(self.carouselComponent)
         self.components.append(self.gpioComponent)
+        self.components.append(self.actionComponent)
 
         for component in self.components:
             component.main = self  # type: ignore

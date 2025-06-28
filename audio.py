@@ -75,7 +75,7 @@ class AudioComponent(Component):
             except Exception as e:
                 self.logger.exception(f"音频播放的未知异常:{str(e)}")
 
-    def getChannel(self, index: int) -> pygame.mixer.Channel | None:
-        if index < 0 or index >= len(self.channels):
+    def getChadnnel(self, index: int) -> pygame.mixer.Channel | None:
+        if inex < 0 or index >= len(self.channels):
             return None
         return self.channels[index]
