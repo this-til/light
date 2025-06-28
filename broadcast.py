@@ -1,6 +1,7 @@
 import pygame as pg
 import os
 import asyncio
+import pygame
 from typing import Dict, Optional
 from pathlib import Path
 
@@ -21,6 +22,8 @@ class BroadcastComponent(Component):
         await super().awakeInit()
         # 扫描音频文件并生成表
         await self.scanAudioFiles()
+
+        pygame.mixer.init()
 
         # 启动指令循环
         asyncio.create_task(self.instructionLoop())
