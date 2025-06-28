@@ -136,7 +136,7 @@ class Mian:
         self.actionComponent = ActionComponent()
         self.motionComponent = MotionComponent()
         self.broadcastComponent = BroadcastComponent()
-        self.KeyComponent = KeyComponent()
+        self.keyComponent = KeyComponent()
         self.imuComponent = ImuComponent()
         
 
@@ -150,7 +150,7 @@ class Mian:
         self.components.append(self.actionComponent)
         self.components.append(self.motionComponent)
         self.components.append(self.broadcastComponent)
-        self.components.append(self.KeyComponent)
+        self.components.append(self.keyComponent)
         self.components.append(self.imuComponent)
 
         for component in self.components:

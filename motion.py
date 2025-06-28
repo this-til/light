@@ -340,7 +340,7 @@ class MotionComponent(Component):
 
     async def instructionLoop(self):
         """指令控制循环，处理运动相关的键盘指令"""
-        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+        queue = await self.main.keyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
         while True:
             try:

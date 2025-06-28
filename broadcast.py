@@ -182,7 +182,7 @@ class BroadcastComponent(Component):
 
     async def instructionLoop(self):
         """指令循环，处理键盘事件触发的音频播放命令"""
-        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+        queue = await self.main.keyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
         while True:
             try:

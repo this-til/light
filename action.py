@@ -12,6 +12,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 import subprocess
 
 import util
+from command import CommandEvent
 from detection import Cell
 from main import Component
 
@@ -41,8 +42,8 @@ class ActionComponent(Component):
 
         # self.actionClient = actionlib.SimpleActionClient("/move_base", MoveBaseAction)
         # self.actionClient.wait_for_server()
-
         asyncio.create_task(self.instructionLoop())
+        asyncio.create_task(self.commandLoop())
 
     async def startMapping(self):
         if self.actionClient is not None:
@@ -773,72 +774,32 @@ class ActionComponent(Component):
             await self.closeMapping()
         pass
 
+    async def commandLoop(self):
+        queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(
+            asyncio.Queue(maxsize=8))
+
+        while True:
+            try:
+                command: CommandEvent = await queue.get()
+
+                if command.key == "Dispatched":
+                    await self.demonstration()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(f"motionLoop 引发异常: {e}")
+
     async def instructionLoop(self):
-        queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
+        queue = await self.main.keyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
         while True:
 
             try:
                 key = await queue.get()
 
-                if key == "demonstration":
+                if key == "acceptDispatched":
                     await self.demonstration()
-
-                if key == "startMapping":
-                    await self.startMapping()
-
-                if key == "closeMapping":
-                    await self.closeMapping()
-
-                if key == "open":
-                    await self.main.exclusiveServerReportComponent.openRollingDoor()
-
-                if key == "close":
-                    await self.main.exclusiveServerReportComponent.closeRollingDoor()
-
-                if key == "exitCabin":
-                    await self.exitCabin()
-
-                if key == "inCabin":
-                    await self.inCabin()
-
-                if key == "calibration":
-                    await self.calibration()
-
-                if key == "returnVoyage":
-                    await self.returnVoyage()
-
-                if key == "calibrationByAngle":
-                    await self.calibrationByAngle()
-
-                if key == "searchFire":
-                    await self.searchFire()
-
-                if key == "testDepthDistance":
-                    await self.testDepthDistance()
-
-                if key == "moveToDistance05":
-                    await self.moveToTargetDistance(0.5)  # 行驶到1米距离
-
-                if key == "moveToDistance2m":
-                    await self.moveToTargetDistance(2.0)  # 行驶到2米距离
-
-                if key == "moveToDistance0.5m":
-                    await self.moveToTargetDistance(0.5)  # 行驶到0.5米距离
-
-                # 支持自定义距离格式：moveToDistance:1.5 (行驶到1.5米)
-                if key.startswith("moveToDistance:"):
-                    try:
-                        distance_str = key.split(":")[1]
-                        target_distance = float(distance_str)
-                        if 0.1 <= target_distance <= 10.0:  # 限制合理的距离范围
-                            await self.moveToTargetDistance(target_distance)
-                        else:
-                            self.logger.warning(f"目标距离超出范围: {target_distance}m (有效范围: 0.1m - 10.0m)")
-                    except (ValueError, IndexError) as e:
-                        self.logger.error(f"无效的距离格式: {key}, 错误: {str(e)}")
-
-
 
             except asyncio.CancelledError:
                 raise
