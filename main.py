@@ -116,7 +116,8 @@ class Mian:
         from display import DisplayComponent
         from broadcast import BroadcastComponent
         from key import KeyComponent
-        from carousel import Carousel
+        from carousel import CarouselComponent
+        from gpio import GpioComponent
 
         self.configureComponent = ConfigureComponent()
         self.uartComponent = UartComponent()
@@ -135,7 +136,8 @@ class Mian:
         self.displayComponent = DisplayComponent()
         self.broadcastComponent = BroadcastComponent()
         self.keyComponent = KeyComponent()
-        self.carousel = Carousel()
+        self.carouselComponent = CarouselComponent()
+        self.gpioComponent = GpioComponent()
 
         self.components.append(self.configureComponent)
         self.components.append(self.uartComponent)
@@ -154,7 +156,8 @@ class Mian:
         self.components.append(self.displayComponent)
         self.components.append(self.broadcastComponent)
         self.components.append(self.keyComponent)
-        self.components.append(self.carousel)
+        self.components.append(self.carouselComponent)
+        self.components.append(self.gpioComponent)
 
         for component in self.components:
             component.main = self  # type: ignore

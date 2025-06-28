@@ -7,7 +7,7 @@ import time
 from typing import List
 from main import Component, ConfigField
 
-class Carousel(Component):
+class CarouselComponent(Component):
     enable: ConfigField[bool] = ConfigField(False)
     images_folder: ConfigField[str] = ConfigField("images")
     interval: ConfigField[float] = ConfigField(3.0)  # 轮播间隔（秒）
