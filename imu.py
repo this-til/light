@@ -1,15 +1,23 @@
 import util
 from main import Component, ConfigField
 import rospy
+import asyncio
 from sensor_msgs.msg import Imu
 
 class ImuComponent(Component):
+
+    debug : ConfigField[bool] = ConfigField()
+    
     quaternion : util.Quaternion = util.Quaternion()
     euler : util.V3 = util.V3()
     
     async def init(self):
         await super().init()
-        rospy.Subscriber("/imu", Imu, self.imuCallback)
+        rospy.Subscriber("/unilidar/imu", Imu, self.imuCallback)
+        
+        if self.debug:
+            asyncio.create_task(self.debugLoop())
+            
         
     def imuCallback(self, msg : Imu):
         orientation = msg.orientation
@@ -20,6 +28,13 @@ class ImuComponent(Component):
             orientation.w
         )
         self.euler = self.quaternion.toEulerAnglesDegrees()
+        
+    async def debugLoop(self):
+        
+        while True:
+            await asyncio.sleep(0.1)
+            self.logger.info(f"yaw={self.euler.z}")
+        pass
         
     def getYaw(self) -> float:
         """获取当前偏航角（度）"""

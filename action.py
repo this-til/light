@@ -747,16 +747,18 @@ class ActionComponent(Component):
 
             await self.exitCabin()
 
+            await self.startMapping()
+            
+            await asyncio.sleep(2)
+            
             yaw: float = self.main.imuComponent.getYaw()
-
+            
             await self.main.motionComponent.rotateLeft(120, 10)
 
-            await self.startMapping()
-
             await self.searchFire()
-
+            
             distance = await self.multipleDepthImageCalculateDistance(5, None)
-            targetDistance = distance - 0.3
+            targetDistance = distance - 0.2
 
             asyncio.create_task(self.main.broadcastComponent.playAudio("发现着火目标，正在前往"))
 

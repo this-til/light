@@ -196,6 +196,7 @@ class MotionComponent(Component):
         finally:
             # 恢复速度衰减设置
             self.setSpeedAttenuation(was_attenuation_enabled)
+            self.stopMotion()
 
     async def rotateByAngle(self, delta_angle: float, timeout: float = 30.0) -> bool:
         """
@@ -337,6 +338,7 @@ class MotionComponent(Component):
             await asyncio.sleep(time)
         finally:
             self.enableSpeedAttenuation()
+            self.stopMotion()
     
     async def motionTimeWithComponents(self, linear: util.V3 = None, angular: util.V3 = None, time: float = 1):
         """使用向量组件运动指定时间"""
