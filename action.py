@@ -33,7 +33,7 @@ class ActionComponent(Component):
             try:
                 command: CommandEvent = await queue.get()
 
-                if command.key == "Dispatched":
+                if command.key == "Dispatch":
                     await self.dispatched()
 
             except asyncio.CancelledError:
@@ -49,11 +49,8 @@ class ActionComponent(Component):
             try:
                 key = await queue.get()
 
-                if key == "Dispatched":
+                if key == "Dispatch":
                     await self.dispatched()
-
-                if key == "acceptDispatched":
-                    await self.main.exclusiveServerReportComponent.setAllowedDispatched(True)
 
             except asyncio.CancelledError:
                 raise
