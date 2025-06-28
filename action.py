@@ -534,7 +534,7 @@ class ActionComponent(Component):
 
             for _ in range(number):
                 mat = await  queue.get()
-                summation += self.depthImageCalculateDistance(mat)
+                summation += self.depthImageCalculateDistance(mat).average_distance
 
             return summation / number
 
