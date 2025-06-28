@@ -494,9 +494,11 @@ class ExclusiveServerReportComponent(Component):
     setAllowedDispatchedGql = gql(
         """
         mutation setAllowedDispatchedGql($activation : Boolean!) {
-            asLight {
-                setAllowedDispatched(activation: $activation) {
-                    resultType
+            deviceSelf {
+                asLight {
+                    setAllowedDispatched(activation: $activation) {
+                        resultType
+                    }
                 }
             }
         }
