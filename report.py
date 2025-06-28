@@ -44,16 +44,7 @@ class ExclusiveServerReportComponent(Component):
     detectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
     sustainedDetectionKeyframeQueue: asyncio.Queue[detection.Result] = asyncio.Queue(maxsize=8)
 
-    commandDownEventGql = gql(
-        """
-        subscription commandDownEvent {
-            commandDownEvent {
-                key
-                value
-            }
-        }
-        """
-    )
+    session = None
 
     async def init(self):
         if self.enable:
@@ -110,7 +101,7 @@ class ExclusiveServerReportComponent(Component):
 
         try:
 
-            session = await client.connect_async(
+            self.session = await client.connect_async(
                 True,
                 retry_execute=False,
                 retry_connect=backoff.on_exception(
@@ -121,11 +112,11 @@ class ExclusiveServerReportComponent(Component):
             )
 
             taskList = [
-                asyncio.create_task(self.sensorReportLoop(session)),
-                asyncio.create_task(self.stateReportLoop(session)),
-                asyncio.create_task(self.configurationDistributionLoop(session)),
-                asyncio.create_task(self.sustainedDetectionReportLoop(session)),
-                asyncio.create_task(self.commandDownEventLoop(session)),
+                asyncio.create_task(self.sensorReportLoop(self.session)),
+                asyncio.create_task(self.stateReportLoop(self.session)),
+                asyncio.create_task(self.configurationDistributionLoop(self.session)),
+                asyncio.create_task(self.sustainedDetectionReportLoop(self.session)),
+                asyncio.create_task(self.commandDownEventLoop(self.session)),
             ]
 
             done, pending = await asyncio.wait(
@@ -227,10 +218,6 @@ class ExclusiveServerReportComponent(Component):
         }
         """
     )
-
-
-
-
 
     async def stateReportLoop(self, session: AsyncClientSession):
         while True:
@@ -475,6 +462,17 @@ class ExclusiveServerReportComponent(Component):
                 self.logger.exception(f"sustainedDetectionReportLoop exception: {str(e)}")
                 await asyncio.sleep(5)
 
+    commandDownEventGql = gql(
+        """
+        subscription commandDownEvent {
+            commandDownEvent {
+                key
+                value
+            }
+        }
+        """
+    )
+
     async def commandDownEventLoop(self, session: AsyncClientSession):
         """Handle incoming command down events"""
         while True:
@@ -492,3 +490,21 @@ class ExclusiveServerReportComponent(Component):
                     raise
                 self.logger.exception(f"commandDownEventLoop exception: {str(e)}")
                 await asyncio.sleep(5)
+
+    setAllowedDispatchedGql = gql(
+        """
+        mutation setAllowedDispatchedGql($activation : Boolean!) {
+            asLight {
+                setAllowedDispatched(activation: $activation) {
+                    resultType
+                }
+            }
+        }
+        """
+    )
+
+    async def setAllowedDispatched(self, activation: bool):
+        self.session.execute(
+            self.setAllowedDispatchedGql,
+            {"activation": activation}
+        )

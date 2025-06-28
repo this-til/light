@@ -10,6 +10,7 @@ class ActionComponent(Component):
     async def awakeInit(self):
         await super().awakeInit()
 
+
     async def dispatched(self):
         await self.main.broadcastComponent.playAudio("发现着火目标，已上报服务器")
         await asyncio.sleep(1)
@@ -49,6 +50,9 @@ class ActionComponent(Component):
 
                 if key == "Dispatched":
                     await self.dispatched()
+
+                if key == "acceptDispatched":
+                    await self.main.exclusiveServerReportComponent.setAllowedDispatched(True)
 
             except asyncio.CancelledError:
                 raise
