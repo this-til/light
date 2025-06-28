@@ -10,6 +10,8 @@ from main import Component, ConfigField
 
 
 class AudioComponent(Component):
+    enable : ConfigField[bool] = ConfigField()
+
     frequency: ConfigField[int] = ConfigField()
     size: ConfigField[int] = ConfigField()
     channelNumber: ConfigField[int] = ConfigField()
@@ -21,35 +23,35 @@ class AudioComponent(Component):
     async def init(self):
         await super().init()
 
-        # pygame.mixer.init(
-        #    frequency=self.frequency,
-        #    size=self.size,
-        #    channels=self.channelNumber,
-        #    buffer=self.buffer,
-        # )
+        if self.enable:
+            # pygame.mixer.init(
+            #    frequency=self.frequency,
+            #    size=self.size,
+            #    channels=self.channelNumber,
+            #    buffer=self.buffer,
+            # )
 
-        # pygame.mixer.init()
-        pygame.mixer.init(frequency=8000, size=-16, channels=1)
+            # pygame.mixer.init()
+            pygame.mixer.init(frequency=8000, size=-16, channels=1)
 
-        if pygame.mixer.get_init() is None:
-            self.logger.error("Failed to initialize the audio system.")
-            return
+            if pygame.mixer.get_init() is None:
+                self.logger.error("Failed to initialize the audio system.")
+                return
 
-        pygame.mixer.music.set_volume(1)
+            pygame.mixer.music.set_volume(1)
 
-        for i in range(self.channelNumber):
-            queue = asyncio.Queue(maxsize=64)
-            channel = pygame.mixer.Channel(i)
-            self.channelPlays.append(queue)
-            self.channels.append(channel)
-            asyncio.create_task(self.playStreamLoop(queue, channel))
+            for i in range(self.channelNumber):
+                queue = asyncio.Queue(maxsize=64)
+                channel = pygame.mixer.Channel(i)
+                self.channelPlays.append(queue)
+                self.channels.append(channel)
+                asyncio.create_task(self.playStreamLoop(queue, channel))
 
     async def initBack(self):
         await super().initBack()
 
-        # TODO 测试
-
-        await self.main.microphoneComponent.collectSound.subscribe(self.channelPlays[0])
+        if self.enable:
+            await self.main.microphoneComponent.collectSound.subscribe(self.channelPlays[0])
 
     async def release(self):
         await super().release()
@@ -76,6 +78,6 @@ class AudioComponent(Component):
                 self.logger.exception(f"音频播放的未知异常:{str(e)}")
 
     def getChadnnel(self, index: int) -> pygame.mixer.Channel | None:
-        if inex < 0 or index >= len(self.channels):
+        if index < 0 or index >= len(self.channels):
             return None
         return self.channels[index]
