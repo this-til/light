@@ -96,7 +96,7 @@ class ActionComponent(Component):
         # await asyncio.get_event_loop().run_in_executor(None, self.actionClient.wait_for_result)
 
         return self.actionClient.get_state()
-    
+
     async def actionNavToPosition(self, position: util.V3, orientation: util.Quaternion = None):
         """导航到指定位置和朝向"""
         if orientation is None:
@@ -237,7 +237,7 @@ class ActionComponent(Component):
         执行反航操作
         '''
         node_process = subprocess.Popen(['rosrun', 'roscar_pkg', 'roscar_return_base'])
-        #node_process.wait()
+        # node_process.wait()
         await asyncio.get_event_loop().run_in_executor(None, node_process.wait)
 
         pass
@@ -251,9 +251,9 @@ class ActionComponent(Component):
         await self.main.exclusiveServerReportComponent.openRollingDoor()
 
         await self.calibrationByAngle()
-        
-        await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x = 0.3), time=4)
- 
+
+        await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x=0.3), time=4)
+
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
         pass
@@ -294,7 +294,7 @@ class ActionComponent(Component):
         # 计算平均位置
         avg_x = sum(pos.x for pos in valid_positions) / len(valid_positions)
         avg_y = sum(pos.y for pos in valid_positions) / len(valid_positions)
-        
+
         avg_position = util.V2(avg_x, avg_y)
         self.logger.info(f"位置检测完成: 有效检测{len(valid_positions)}次, 平均位置{avg_position}")
 
@@ -351,7 +351,7 @@ class ActionComponent(Component):
         :param offset: 偏差向量（正值表示十字准星在图像右侧/下方）
         """
         offset_x = offset.x
-        
+
         if abs(offset_x) > 100:
             calibration_speed = 0.03  # 偏差大时使用较快速度
         elif abs(offset_x) > 50:
@@ -372,7 +372,7 @@ class ActionComponent(Component):
             else:
                 # 十字准星在左侧，车需要向左移动（正Y方向）
                 velocity = util.Velocity.create(linear_y=calibration_speed)
-            
+
             self.main.motionComponent.setVelocity(velocity)
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
@@ -438,7 +438,7 @@ class ActionComponent(Component):
         :param offset: 偏差向量
         """
         offset_x = offset.x
-        
+
         if abs(offset_x) > 100:
             calibration_speed = 0.5  # 偏差大时使用较快速度
         elif abs(offset_x) > 50:
@@ -454,7 +454,7 @@ class ActionComponent(Component):
                 velocity = util.Velocity.create(angular_z=-calibration_speed)
             else:
                 velocity = util.Velocity.create(angular_z=calibration_speed)
-            
+
             self.main.motionComponent.setVelocity(velocity)
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
@@ -746,6 +746,10 @@ class ActionComponent(Component):
 
             await self.exitCabin()
 
+            yaw: float = self.main.imuComponent.getYaw()
+
+            await self.main.motionComponent.rotateLeft(180, 10)
+
             await self.startMapping()
 
             await self.searchFire()
@@ -759,6 +763,8 @@ class ActionComponent(Component):
 
             await self.returnVoyage()
 
+            await self.main.motionComponent.rotateToAngle(yaw)
+
             await self.inCabin()
 
         except Exception as e:
@@ -767,7 +773,6 @@ class ActionComponent(Component):
             await self.closeMapping()
         pass
 
-
     async def instructionLoop(self):
         queue = await self.main.KeyComponent.keyEvent.subscribe(asyncio.Queue(maxsize=1))
 
@@ -775,7 +780,7 @@ class ActionComponent(Component):
 
             try:
                 key = await queue.get()
-                
+
                 if key == "demonstration":
                     await self.demonstration()
 
@@ -793,13 +798,13 @@ class ActionComponent(Component):
 
                 if key == "exitCabin":
                     await self.exitCabin()
-                    
+
                 if key == "inCabin":
                     await self.inCabin()
 
                 if key == "calibration":
                     await self.calibration()
-                    
+
                 if key == "returnVoyage":
                     await self.returnVoyage()
 
