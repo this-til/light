@@ -749,7 +749,7 @@ class ActionComponent(Component):
 
             yaw: float = self.main.imuComponent.getYaw()
 
-            await self.main.motionComponent.rotateLeft(180, 10)
+            await self.main.motionComponent.rotateLeft(120, 10)
 
             await self.startMapping()
 
