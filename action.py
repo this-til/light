@@ -9,7 +9,8 @@ class ActionComponent(Component):
 
     async def awakeInit(self):
         await super().awakeInit()
-
+        asyncio.create_task(self.instructionLoop())
+        asyncio.create_task(self.commandLoop())
 
     async def dispatched(self):
         await self.main.broadcastComponent.playAudio("发现着火目标，已上报服务器")
