@@ -759,6 +759,8 @@ class ActionComponent(Component):
 
             await self.searchFire()
             
+            await self.main.motionComponent.rotateLeft(15, 5)
+            
             distance = await self.multipleDepthImageCalculateDistance(5, None)
             targetDistance = distance - 0.2
 
@@ -812,6 +814,61 @@ class ActionComponent(Component):
 
                 if key == "Dispatched":
                     await self.demonstration()
+                    
+                if key == "startMapping":
+                    await self.startMapping()
+
+                if key == "closeMapping":
+                    await self.closeMapping()
+
+                if key == "open":
+                    await self.main.exclusiveServerReportComponent.openRollingDoor()
+
+                if key == "close":
+                    await self.main.exclusiveServerReportComponent.closeRollingDoor()
+
+                if key == "exitCabin":
+                    await self.exitCabin()
+
+                if key == "inCabin":
+                    await self.inCabin()
+
+                if key == "calibration":
+                    await self.calibration()
+
+                if key == "returnVoyage":
+                    await self.returnVoyage()
+
+                if key == "calibrationByAngle":
+                    await self.calibrationByAngle()
+
+                if key == "searchFire":
+                    await self.searchFire()
+
+                if key == "testDepthDistance":
+                    await self.testDepthDistance()
+
+                if key == "moveToDistance05":
+                    await self.moveToTargetDistance(0.5)  # 行驶到1米距离
+
+                if key == "moveToDistance2m":
+                    await self.moveToTargetDistance(2.0)  # 行驶到2米距离
+
+                if key == "moveToDistance0.5m":
+                    await self.moveToTargetDistance(0.5)  # 行驶到0.5米距离
+
+                # 支持自定义距离格式：moveToDistance:1.5 (行驶到1.5米)
+                if key.startswith("moveToDistance:"):
+                    try:
+                        distance_str = key.split(":")[1]
+                        target_distance = float(distance_str)
+                        if 0.1 <= target_distance <= 10.0:  # 限制合理的距离范围
+                            await self.moveToTargetDistance(target_distance)
+                        else:
+                            self.logger.warning(f"目标距离超出范围: {target_distance}m (有效范围: 0.1m - 10.0m)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的距离格式: {key}, 错误: {str(e)}")
+
 
             except asyncio.CancelledError:
                 raise
