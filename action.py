@@ -755,6 +755,8 @@ class ActionComponent(Component):
             
             await self.main.motionComponent.rotateLeft(120, 10)
 
+            asyncio.create_task(self.main.broadcastComponent.playAudio("开始寻找着火点"))
+
             await self.searchFire()
             
             distance = await self.multipleDepthImageCalculateDistance(5, None)
