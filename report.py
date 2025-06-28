@@ -504,7 +504,7 @@ class ExclusiveServerReportComponent(Component):
     )
 
     async def setAllowedDispatched(self, activation: bool):
-        self.session.execute(
+        await self.session.execute(
             self.setAllowedDispatchedGql,
             {"activation": activation}
         )
