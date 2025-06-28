@@ -931,6 +931,46 @@ class ActionComponent(Component):
             await self.closeMapping()
         pass
 
+    async def demonstration2(self) :
+        try:
+            await self.exitCabin()
+            
+            await self.startMapping()
+            
+            await asyncio.sleep(2)
+            
+            yaw: float = self.main.imuComponent.getYaw()
+            
+            await self.main.motionComponent.rotateLeft(120, 10)
+            
+            asyncio.create_task(self.main.broadcastComponent.playAudio("开始寻找着火点"))
+            
+            for i in range(6):
+                await self.main.motionComponent.rotateLeft(10, 10)
+
+            asyncio.create_task(self.main.broadcastComponent.playAudio("发现着火目标，正在前往"))
+            
+            await self.main.motionComponent.motionTime(linear_x=0.5, time=2)
+            
+            await asyncio.sleep(3)
+
+            asyncio.create_task(self.main.broadcastComponent.playAudio("完成灭火操作，正在返航"))
+            
+            await self.main.motionComponent.rotateLeft(180, 10)
+            
+            await self.main.motionComponent.motionTime(linear_x=0.5, time=2)
+            
+            #await self.main.motionComponent.rotateByAngle(yaw)
+            
+            await self.inCabin()
+                
+        except Exception as e:
+            self.logger.error(f"demonstration Error: {str(e)}")
+        finally:
+            await self.closeMapping()
+        pass
+
+
     async def commandLoop(self):
         queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(
             asyncio.Queue(maxsize=8))
@@ -942,6 +982,12 @@ class ActionComponent(Component):
                 if command.key == "Dispatched":
                     await self.demonstration()
 
+                if command.key == "Dispatched2":
+                    await self.demonstration2()
+                    
+                if command.key == "Dispatch":
+                    await self.demonstration2()
+                    
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -957,6 +1003,9 @@ class ActionComponent(Component):
 
                 if key == "Dispatched":
                     await self.demonstration()
+                    
+                if key == "Dispatched2":
+                    await self.demonstration2()
                     
                 if key == "startMapping":
                     await self.startMapping()

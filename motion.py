@@ -256,11 +256,11 @@ class MotionComponent(Component):
             self.setVelocity(velocity)
         elif operation == "angularLeft":
             # 左角速度+
-            velocity = util.Velocity.create(angular_z=self.speed)
+            velocity = util.Velocity.create(angular_z=self.turnSpeed)
             self.setVelocity(velocity)
         elif operation == "angularRight":
             # 右角速度+
-            velocity = util.Velocity.create(angular_z=-self.speed)
+            velocity = util.Velocity.create(angular_z=-self.turnSpeed)
             self.setVelocity(velocity)
         elif operation == "stop":
             # 停止
