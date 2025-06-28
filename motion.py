@@ -160,11 +160,16 @@ class MotionComponent(Component):
                     return True
                 
                 # 计算控制输出（比例控制）
-                angular_velocity = angle_error * self.rotationKp
-                
+                #angular_velocity = angle_error * self.rotationKp
+
                 # 限制最大旋转速度
-                angular_velocity = util.clamp(angular_velocity, -self.maxRotationSpeed, self.maxRotationSpeed)
-                
+                #angular_velocity = util.clamp(angular_velocity, -self.maxRotationSpeed, self.maxRotationSpeed)
+
+                if angle_error > 0:
+                    angular_velocity = self.turnSpeed
+                else:
+                    angular_velocity = -self.turnSpeed
+
                 # 每5个循环输出一次详细日志（约0.25秒一次）
                 if loop_count % 5 == 1:
                     elapsed_time = current_time - start_time
