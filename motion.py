@@ -135,8 +135,11 @@ class MotionComponent(Component):
             # 暂时禁用速度衰减
             self.disableSpeedAttenuation()
             
+            loop_count = 0  # 循环计数器，用于控制日志输出频率
+            
             while True:
                 current_time = asyncio.get_event_loop().time()
+                loop_count += 1
                 
                 # 检查超时
                 if current_time - start_time > timeout:
@@ -161,6 +164,15 @@ class MotionComponent(Component):
                 
                 # 限制最大旋转速度
                 angular_velocity = util.clamp(angular_velocity, -self.maxRotationSpeed, self.maxRotationSpeed)
+                
+                # 每5个循环输出一次详细日志（约0.25秒一次）
+                if loop_count % 5 == 1:
+                    elapsed_time = current_time - start_time
+                    self.logger.info(
+                        f"旋转中 - 当前: {current_angle:.2f}°, 目标: {target_angle}°, "
+                        f"差距: {angle_error:.2f}°, 速度: {angular_velocity:.3f} rad/s, "
+                        f"用时: {elapsed_time:.1f}s"
+                    )
                 
                 # 设置旋转速度
                 self.setVelocity(angular_z=angular_velocity)
@@ -198,19 +210,24 @@ class MotionComponent(Component):
         
         # 计算目标角度
         target_angle = current_angle + delta_angle
-        target_angle = self.normalizeAngle(target_angle)
+        target_angle_normalized = self.normalizeAngle(target_angle)
         
-        self.logger.info(f"当前角度: {current_angle:.2f}°，目标角度: {target_angle:.2f}°")
+        self.logger.info(
+            f"相对旋转计算 - 当前: {current_angle:.2f}°, 增量: {delta_angle:.2f}°, "
+            f"目标: {target_angle:.2f}° → 规范化: {target_angle_normalized:.2f}°"
+        )
         
         # 调用绝对角度旋转方法
-        return await self.rotateToAngle(target_angle, timeout)
+        return await self.rotateToAngle(target_angle_normalized, timeout)
 
     async def rotateLeft(self, angle: float = 90.0, timeout: float = 30.0) -> bool:
         """向左（逆时针）旋转指定角度"""
+        self.logger.info(f"向左旋转 {angle}° (逆时针)")
         return await self.rotateByAngle(angle, timeout)
 
     async def rotateRight(self, angle: float = 90.0, timeout: float = 30.0) -> bool:
         """向右（顺时针）旋转指定角度"""
+        self.logger.info(f"向右旋转 {angle}° (顺时针)")
         return await self.rotateByAngle(-angle, timeout)
 
     def handleOperation(self, operation: str):
