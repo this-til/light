@@ -9,7 +9,7 @@
     "timeout": 30,
     "pingInterval": 10,
     "subprotocol": "graphql-transport-ws",
-    "lodgeLight": "挂着咸鱼的路灯"
+    "lodgeLight": "智能路灯"
   },
   "OrbbecCameraComponent": {
     "enable": true,
