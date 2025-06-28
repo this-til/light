@@ -145,7 +145,7 @@ class ActionComponent(Component):
 
         try:
             # 开始前进搜索
-            self.main.motionComponent.setVelocity(linear_x=searchSpeed)
+            self.main.motionComponent.setVelocity(angular_z=searchSpeed)
 
             # 搜索循环，带超时检查
             while True:
