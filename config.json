@@ -1,9 +1,9 @@
 {
   "ExclusiveServerReportComponent": {
     "enable": true,
-    "username": "til",
+    "username": "admin",
     "password": "114514",
-    "localName": "拖着咸鱼的小车",
+    "localName": "智能小车",
     "webSocketUrl": "ws://192.168.117.120:8080/graphql",
     "httpUrl": "http://192.168.117.120:8080/graphql",
     "timeout": 30,
