@@ -460,6 +460,149 @@ class ActionComponent(Component):
             await asyncio.sleep(0.2)
             self.main.motionComponent.stopMotion()
 
+    async def alignWithFire(self, timeout: float = 30.0, tolerance: float = 15.0):
+        """
+        持续检测火源并调整车辆姿态，让火源的X坐标与图像中心对齐
+        :param timeout: 调整超时时间（秒），默认30秒
+        :param tolerance: X轴容差（像素），默认15像素
+        """
+        self.logger.info(f"开始火源对齐调整，超时时间: {timeout}秒，容差: {tolerance}像素")
+        
+        # 订阅图像数据流
+        queue: asyncio.Queue[cv2.typing.MatLike] = await self.main.orbbecCameraComponent.brightnessNormalizationSource.subscribe(
+            asyncio.Queue(maxsize=1))
+        
+        self.main.motionComponent.disableSpeedAttenuation()
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        try:
+            max_iterations = 40  # 最大调整次数
+            
+            for iteration in range(max_iterations):
+                current_time = asyncio.get_event_loop().time()
+                elapsed_time = current_time - start_time
+                
+                # 检查是否超时
+                if elapsed_time >= timeout:
+                    self.logger.warning(f"火源对齐超时: {timeout}秒内未完成对齐")
+                    raise Exception(f"火源对齐超时: {timeout}秒内未完成对齐")
+                
+                try:
+                    # 获取图像
+                    mat = await asyncio.wait_for(queue.get(), timeout=2.0)
+                    
+                    # 运行火源检测
+                    detectionResult = await self.main.detectionComponent.runDetection(
+                        mat,
+                        [self.main.detectionComponent.fireModel]
+                    )
+                    
+                    # 获取检测结果
+                    itemList: list[Cell] = detectionResult.cellMap.get(self.main.detectionComponent.fireModel, None)
+                    
+                    if itemList is None or len(itemList) <= 0:
+                        self.logger.warning(f"第{iteration + 1}次检测: 未检测到火源")
+                        await asyncio.sleep(0.5)
+                        continue
+                    
+                    # 收集所有火源框
+                    fire_boxes = []
+                    
+                    for e in itemList:
+                        if e.item == self.main.detectionComponent.fireModel.fire:
+                            box: util.Box = e.box
+                            fire_boxes.append({
+                                'box': box,
+                                'probability': e.probability,
+                                'center_x': box.x + box.w / 2,
+                                'center_y': box.y + box.h / 2
+                            })
+                    
+                    if not fire_boxes:
+                        self.logger.warning(f"第{iteration + 1}次检测: 检测到{len(itemList)}个对象，但无火源")
+                        await asyncio.sleep(0.5)
+                        continue
+                    
+                    # 计算所有火源框的整体中心点
+                    if len(fire_boxes) == 1:
+                        # 只有一个火源框
+                        fire_center_x = fire_boxes[0]['center_x']
+                        self.logger.info(f"第{iteration + 1}次检测: 检测到1个火源框，中心X坐标: {fire_center_x:.1f}, 置信度: {fire_boxes[0]['probability']:.2f}")
+                    else:
+                        # 多个火源框，计算加权中心点（根据置信度加权）
+                        total_weight = sum(fb['probability'] for fb in fire_boxes)
+                        weighted_center_x = sum(fb['center_x'] * fb['probability'] for fb in fire_boxes) / total_weight
+                        fire_center_x = weighted_center_x
+                        
+                        # 也可以选择简单几何中心（不考虑置信度）
+                        # geometric_center_x = sum(fb['center_x'] for fb in fire_boxes) / len(fire_boxes)
+                        
+                        self.logger.info(f"第{iteration + 1}次检测: 检测到{len(fire_boxes)}个火源框，加权中心X坐标: {fire_center_x:.1f}")
+                        for i, fb in enumerate(fire_boxes):
+                            self.logger.debug(f"  火源框{i+1}: 中心({fb['center_x']:.1f}, {fb['center_y']:.1f}), 置信度: {fb['probability']:.2f}")
+                    
+                    # 计算图像中心X坐标
+                    image_center_x = 320  # 根据实际图像尺寸调整
+                    
+                    # 计算X轴偏差
+                    offset_x = fire_center_x - image_center_x
+                    
+                    self.logger.info(f"火源对齐第{iteration + 1}次: 火源X坐标{fire_center_x:.1f}, 图像中心X{image_center_x}, X轴偏差{offset_x:.1f}")
+                    
+                    # 检查是否已经对齐
+                    if abs(offset_x) <= tolerance:
+                        self.logger.info("火源对齐完成：火源X坐标已接近图像中心")
+                        break
+                    
+                    # 根据偏差调整车辆角度
+                    await self._adjustVehicleAngleForFire(offset_x)
+                    
+                    # 等待调整完成
+                    await asyncio.sleep(1.0)
+                    
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"获取图像超时 (时间: {elapsed_time:.1f}s)")
+                    await asyncio.sleep(0.5)
+                
+            else:
+                raise Exception(f"火源对齐失败：在{max_iterations}次迭代内未能完成火源对齐")
+        
+        finally:
+            self.main.motionComponent.enableSpeedAttenuation()
+            await self.main.orbbecCameraComponent.brightnessNormalizationSource.unsubscribe(queue)
+            self.logger.info("火源对齐调整结束")
+
+    async def _adjustVehicleAngleForFire(self, offset_x: float):
+        """
+        根据火源X轴偏差调整车辆角度
+        :param offset_x: X轴偏差（正值表示火源在图像右侧）
+        """
+        if abs(offset_x) > 100:
+            calibration_speed = 0.5  # 偏差大时使用较快速度
+        elif abs(offset_x) > 50:
+            calibration_speed = 0.4  # 中等偏差使用中等速度
+        else:
+            calibration_speed = 0.3  # 偏差小时使用最慢速度
+        
+        self.logger.info(f"调整车辆角度: X轴偏差{offset_x:.1f}, 使用角速度{calibration_speed:.2f}")
+        
+        # 先停止当前运动
+        self.main.motionComponent.stopMotion()
+        
+        # 根据X轴偏差方向旋转
+        if abs(offset_x) > 5:  # 只有偏差大于5像素才旋转
+            if offset_x > 0:
+                # 火源在右侧，需要向右旋转（负角速度）
+                velocity = util.Velocity.create(angular_z=-calibration_speed)
+            else:
+                # 火源在左侧，需要向左旋转（正角速度）
+                velocity = util.Velocity.create(angular_z=calibration_speed)
+            
+            self.main.motionComponent.setVelocity(velocity)
+            await asyncio.sleep(0.2)
+            self.main.motionComponent.stopMotion()
+
     def depthImageCalculateDistance(self, image: cv2.typing.MatLike) -> DepthResult:
         """
         计算深度图像中心区域的平均距离
@@ -759,7 +902,7 @@ class ActionComponent(Component):
 
             await self.searchFire()
             
-            await self.main.motionComponent.rotateLeft(15, 5)
+            await self.alignWithFire()
             
             distance = await self.multipleDepthImageCalculateDistance(5, None)
             targetDistance = distance - 0.2
@@ -844,6 +987,9 @@ class ActionComponent(Component):
 
                 if key == "searchFire":
                     await self.searchFire()
+
+                if key == "alignWithFire":
+                    await self.alignWithFire()
 
                 if key == "testDepthDistance":
                     await self.testDepthDistance()
