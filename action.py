@@ -25,6 +25,13 @@ class ActionComponent(Component):
 
         pass
 
+    async def endDemonstration(self):
+        await self.main.deviceComponent.sendCommand(Command(UavBaseStationOperation, "CabinDoorClose"))
+        await asyncio.sleep(1)
+        await self.main.deviceComponent.sendCommand(Command(UavBaseStationOperation, "LocalClose"))
+
+        pass
+
     async def commandLoop(self):
         queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(
             asyncio.Queue(maxsize=8))
@@ -35,6 +42,9 @@ class ActionComponent(Component):
 
                 if command.key == "Dispatch":
                     await self.dispatched()
+
+                if command.key == "End.Dispatch":
+                    await self.endDemonstration()
 
             except asyncio.CancelledError:
                 raise
@@ -51,6 +61,9 @@ class ActionComponent(Component):
 
                 if key == "Dispatch":
                     await self.dispatched()
+
+                if key == "End.Dispatch":
+                    await self.endDemonstration()
 
             except asyncio.CancelledError:
                 raise
