@@ -251,7 +251,7 @@ class ActionComponent(Component):
 
         await self.main.exclusiveServerReportComponent.openRollingDoor()
 
-        await self.calibrationByAngle()
+        await self.calibration()
 
         await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x=0.3), time=4)
 
@@ -531,12 +531,12 @@ class ActionComponent(Component):
                         self.logger.info(f"第{iteration + 1}次检测: 检测到1个火源框，中心X坐标: {fire_center_x:.1f}, 置信度: {fire_boxes[0]['probability']:.2f}")
                     else:
                         # 多个火源框，计算加权中心点（根据置信度加权）
-                        total_weight = sum(fb['probability'] for fb in fire_boxes)
-                        weighted_center_x = sum(fb['center_x'] * fb['probability'] for fb in fire_boxes) / total_weight
-                        fire_center_x = weighted_center_x
+                        #total_weight = sum(fb['probability'] for fb in fire_boxes)
+                        #weighted_center_x = sum(fb['center_x'] * fb['probability'] for fb in fire_boxes) / total_weight
+                        #fire_center_x = weighted_center_x
                         
                         # 也可以选择简单几何中心（不考虑置信度）
-                        # geometric_center_x = sum(fb['center_x'] for fb in fire_boxes) / len(fire_boxes)
+                        geometric_center_x = sum(fb['center_x'] for fb in fire_boxes) / len(fire_boxes)
                         
                         self.logger.info(f"第{iteration + 1}次检测: 检测到{len(fire_boxes)}个火源框，加权中心X坐标: {fire_center_x:.1f}")
                         for i, fb in enumerate(fire_boxes):
@@ -952,6 +952,8 @@ class ActionComponent(Component):
             
             await self.main.motionComponent.motionTime(linear_x=0.5, time=2)
             
+            asyncio.create_task(self.main.broadcastComponent.playAudio("正在执行灭火操作"))
+            
             await asyncio.sleep(3)
 
             asyncio.create_task(self.main.broadcastComponent.playAudio("完成灭火操作，正在返航"))
@@ -960,7 +962,7 @@ class ActionComponent(Component):
             
             await self.main.motionComponent.motionTime(linear_x=0.5, time=2)
             
-            #await self.main.motionComponent.rotateByAngle(yaw)
+            await self.main.motionComponent.rotateByAngle(yaw)
             
             await self.inCabin()
                 
@@ -968,6 +970,10 @@ class ActionComponent(Component):
             self.logger.error(f"demonstration Error: {str(e)}")
         finally:
             await self.closeMapping()
+        pass
+    
+    async def endDemonstration(self) :
+        
         pass
 
 
@@ -987,6 +993,9 @@ class ActionComponent(Component):
                     
                 if command.key == "Dispatch":
                     await self.demonstration2()
+                
+                if command.key == "End.Dispatch":
+                    await self.endDemonstration()
                     
             except asyncio.CancelledError:
                 raise
