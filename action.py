@@ -114,7 +114,7 @@ class ActionComponent(Component):
         await self.main.exclusiveServerReportComponent.openRollingDoor()
 
         velocity = util.Velocity.create(linear_x=-0.2)
-        await self.main.motionComponent.motionTime(velocity=velocity, time=4)
+        await self.main.motionComponent.motionTime(velocity=velocity, time=3.5)
 
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
@@ -253,7 +253,7 @@ class ActionComponent(Component):
 
         await self.calibration()
 
-        await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x=0.3), time=4)
+        await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x=0.2), time=4)
 
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
 
@@ -890,6 +890,8 @@ class ActionComponent(Component):
 
             await self.exitCabin()
 
+            asyncio.create_task(self.main.broadcastComponent.playAudio("正在建图，请稍候"))
+
             await self.startMapping()
             
             await asyncio.sleep(2)
@@ -898,7 +900,7 @@ class ActionComponent(Component):
             
             await self.main.motionComponent.rotateLeft(120, 10)
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("开始寻找着火点"))
+            await self.main.broadcastComponent.playAudio("开始寻找着火点")
 
             await self.searchFire()
             
@@ -907,7 +909,7 @@ class ActionComponent(Component):
             distance = await self.multipleDepthImageCalculateDistance(5, None)
             targetDistance = distance - 0.2
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("发现着火目标，正在前往"))
+            await self.main.broadcastComponent.playAudio("发现着火目标，正在前往")
 
             # 使用 Pose 对象创建目标位置
             target_position = util.V3(targetDistance, 0, 0)
@@ -935,6 +937,8 @@ class ActionComponent(Component):
         try:
             await self.exitCabin()
             
+            asyncio.create_task(self.main.broadcastComponent.playAudio("正在建图，请稍候"))
+            
             await self.startMapping()
             
             await asyncio.sleep(2)
@@ -943,26 +947,27 @@ class ActionComponent(Component):
             
             await self.main.motionComponent.rotateLeft(120, 10)
             
-            asyncio.create_task(self.main.broadcastComponent.playAudio("开始寻找着火点"))
+            await self.main.broadcastComponent.playAudio("开始寻找着火点")
             
             for i in range(6):
                 await self.main.motionComponent.rotateLeft(10, 10)
+                await asyncio.sleep(1)
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("发现着火目标，正在前往"))
+            await self.main.broadcastComponent.playAudio("发现着火目标，正在前往")
             
-            await self.main.motionComponent.motionTime(linear_x=0.5, time=2)
+            await self.main.motionComponent.motionTime(linear_x=0.3, time=3)
             
-            asyncio.create_task(self.main.broadcastComponent.playAudio("正在执行灭火操作"))
+            await self.main.broadcastComponent.playAudio("正在执行灭火操作")
             
             await asyncio.sleep(3)
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("完成灭火操作，正在返航"))
+            await self.main.broadcastComponent.playAudio("完成灭火操作，正在返航")
             
             await self.main.motionComponent.rotateLeft(180, 10)
             
-            await self.main.motionComponent.motionTime(linear_x=0.5, time=2)
+            await self.main.motionComponent.motionTime(linear_x=0.3, time=3)
             
-            await self.main.motionComponent.rotateByAngle(yaw)
+            #await self.main.motionComponent.rotateByAngle(yaw)
             
             await self.inCabin()
                 
