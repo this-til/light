@@ -905,7 +905,7 @@ class ActionComponent(Component):
 
             await self.main.broadcastComponent.playAudio("开始寻找着火点")
 
-            await self.main.motionComponent.rotateLeft(60, 10, 0.2)
+            await self.main.motionComponent.rotateLeft(53, 10, 0.2)
 
             #try :
             #
@@ -933,8 +933,12 @@ class ActionComponent(Component):
             # target_position = util.V3(targetDistance, 0, 0)
             # await self.actionNavToPosition(target_position)
 
-            await self.moveToTargetDistance(0.5)
-
+            try:
+                await self.moveToTargetDistance(0.5, timeout=5.5)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                pass
 
             await self.main.broadcastComponent.playAudio("已到达着火地点，开始灭火")
 
@@ -944,11 +948,16 @@ class ActionComponent(Component):
 
             #await self.returnVoyage()
 
-            await self.main.motionComponent.rotateLeft(180, 10)
+            await self.main.motionComponent.rotateLeft(170, 10)
             
-            await self.moveToTargetDistance(0.5)
+            try:
+                await self.moveToTargetDistance(0.5, timeout=5.5)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                pass
 
-            await self.main.motionComponent.rotateLeft(yaw, 10)
+            #await self.main.motionComponent.rotateLeft(yaw, 10)
             
             await self.inCabin()
 
@@ -957,6 +966,7 @@ class ActionComponent(Component):
         finally:
             await self.closeMapping()
             await self.main.exclusiveServerReportComponent.endDispatch()
+            self.demonstrationTask = None
         pass
 
     async def demonstration2(self) :
@@ -999,6 +1009,8 @@ class ActionComponent(Component):
                 
         except Exception as e:
             self.logger.error(f"demonstration Error: {str(e)}")
+        except asyncio.CancelledError:
+                raise
         finally:
             await self.closeMapping()
             
@@ -1008,7 +1020,8 @@ class ActionComponent(Component):
     async def endDemonstration(self) :
         
         pass
-
+    
+    demonstrationTask : asyncio.Task | None = None 
 
     async def commandLoop(self):
         queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(
@@ -1025,10 +1038,13 @@ class ActionComponent(Component):
                     await self.demonstration2()
                     
                 if command.key == "Dispatch":
-                    await self.demonstration()
-                
-                if command.key == "End.Dispatch":
-                    await self.endDemonstration()
+                    #await self.demonstration()
+                    if self.demonstrationTask is None:
+                        self.demonstrationTask = asyncio.create_task(self.demonstration())
+                        
+                if command.key == "Interrupt":
+                    if self.demonstrationTask is not None:
+                        self.demonstrationTask.cancel()
                     
             except asyncio.CancelledError:
                 raise

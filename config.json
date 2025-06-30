@@ -43,6 +43,6 @@
     "soundSource": "/home/cat/car/sound"
   },
   "ImuComponent" :{
-    "debug" : false
+    "debug" : true
   }
 }
