@@ -580,7 +580,25 @@ class ExclusiveServerReportComponent(Component):
         await self.setRollingDoor(False)
         await self.waitForRollingDoorState(RollingDoorState.CLOSED, lambda : self.setRollingDoor(False))
 
+    endDispatchGql = gql(
+        """
+        mutation endDispatch{
+            endDispatch{
+                resultType
+                message
+            }
+        }
+        """
+    )
+    
+    async def endDispatch(self) -> None:
+        if not self.session:
+            raise RuntimeError("WebSocket session 未建立")
 
+        result = await self.session.execute(
+            self.endDispatchGql
+        )
+    
 class RollingDoorState(Enum):
     OPENED = "OPENED"
     OPENING = "OPENING"

@@ -250,9 +250,12 @@ class ActionComponent(Component):
         '''
 
         await self.main.exclusiveServerReportComponent.openRollingDoor()
-
-        await self.calibration()
-
+        
+        try:
+            await self.calibration()
+        except Exception as e:
+            self.logger.exception(f"运行异常请关注")
+        
         await self.main.motionComponent.motionTimeWithComponents(linear=util.V3(x=0.2), time=4)
 
         await self.main.exclusiveServerReportComponent.setRollingDoor(False)
@@ -937,11 +940,11 @@ class ActionComponent(Component):
 
             #await self.returnVoyage()
 
-            await self.main.motionComponent.rotateLeft(180, 10)
+            await self.main.motionComponent.rotateToAngle(syaw + 180, 10)
             
             await self.moveToTargetDistance(0.5)
             
-            # await self.main.motionComponent.rotateToAngle(yaw)
+            await self.main.motionComponent.rotateToAngle(yaw)
 
             await self.inCabin()
 
@@ -949,6 +952,7 @@ class ActionComponent(Component):
             self.logger.error(f"demonstration Error: {str(e)}")
         finally:
             await self.closeMapping()
+            await self.main.exclusiveServerReportComponent.endDispatch()
         pass
 
     async def demonstration2(self) :
@@ -993,6 +997,8 @@ class ActionComponent(Component):
             self.logger.error(f"demonstration Error: {str(e)}")
         finally:
             await self.closeMapping()
+            
+            await self.main.exclusiveServerReportComponent.endDispatch()
         pass
     
     async def endDemonstration(self) :
