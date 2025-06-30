@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 
 import rospy
 from geometry_msgs.msg import Twist
@@ -11,6 +12,62 @@ from main import Component, ConfigField
 import util
 
 
+class PIDController:
+    """PID控制器类"""
+    def __init__(self, kp: float = 1.0, ki: float = 0.0, kd: float = 0.0, max_output: float = float('inf')):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.max_output = max_output
+        
+        self.previous_error = 0.0
+        self.integral = 0.0
+        self.last_time = None
+    
+    def reset(self):
+        """重置PID控制器状态"""
+        self.previous_error = 0.0
+        self.integral = 0.0
+        self.last_time = None
+    
+    def compute(self, error: float) -> float:
+        """计算PID输出"""
+        current_time = time.time()
+        
+        if self.last_time is None:
+            self.last_time = current_time
+            self.previous_error = error
+            return 0.0
+        
+        dt = current_time - self.last_time
+        if dt <= 0:
+            return 0.0
+        
+        # 比例项
+        proportional = self.kp * error
+        
+        # 积分项
+        self.integral += error * dt
+        integral_term = self.ki * self.integral
+        
+        # 微分项
+        derivative = (error - self.previous_error) / dt
+        derivative_term = self.kd * derivative
+        
+        # 计算总输出
+        output = proportional + integral_term + derivative_term
+        
+        # 限制输出范围
+        if self.max_output != float('inf'):
+            output = max(-self.max_output, min(self.max_output, output))
+        
+        # 更新历史值
+        self.previous_error = error
+        self.last_time = current_time
+        
+        return output
+
+
 class MotionComponent(Component):
     speed: ConfigField[float] = ConfigField()
     turnSpeed: ConfigField[float] = ConfigField()
@@ -18,17 +75,33 @@ class MotionComponent(Component):
     rotationTolerance: ConfigField[float] = ConfigField()  # 旋转容忍度（度）
     rotationKp: ConfigField[float] = ConfigField()  # 旋转比例控制系数
     maxRotationSpeed: ConfigField[float] = ConfigField()  # 最大旋转速度
+    
+    # PID控制参数
+    pidKp: ConfigField[float] = ConfigField(default=0.02)  # PID比例系数
+    pidKi: ConfigField[float] = ConfigField(default=0.001)  # PID积分系数
+    pidKd: ConfigField[float] = ConfigField(default=0.005)  # PID微分系数
 
     velPub = None  # 添加发布器变量
     msg = None
     velocity: util.Velocity = None  # 使用封装的速度类型
     speedAttenuationEnabled = True  # 速度衰减开关，默认启用
+    
+    # PID控制器实例
+    rotation_pid: PIDController = None
 
     async def awakeInit(self):
         await super().awakeInit()
         self.velPub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
         self.msg = Twist()
         self.velocity = util.Velocity()  # 初始化速度对象
+        
+        # 初始化PID控制器
+        self.rotation_pid = PIDController(
+            kp=self.pidKp,
+            ki=self.pidKi,
+            kd=self.pidKd,
+            max_output=self.maxRotationSpeed
+        )
 
         asyncio.create_task(self.motionLoop())
         asyncio.create_task(self.speedAttenuationLoop())
@@ -112,7 +185,7 @@ class MotionComponent(Component):
         diff = target_angle - current_angle
         return self.normalizeAngle(diff)
 
-    async def rotateToAngle(self, target_angle: float, timeout: float = 30.0, speed: float = None) -> bool:
+    async def rotateToAngle(self, target_angle: float, timeout: float = 30.0, speed: float = None, use_pid: bool = False) -> bool:
         """
         旋转到指定的绝对角度
         
@@ -120,6 +193,7 @@ class MotionComponent(Component):
             target_angle: 目标角度（度，-180到180）
             timeout: 超时时间（秒）
             speed: 旋转速度（rad/s），为None时使用默认turnSpeed
+            use_pid: 是否启用PID控制，False时使用固定速度控制
         
         返回:
             bool: 是否成功到达目标角度
@@ -127,7 +201,8 @@ class MotionComponent(Component):
         # 使用指定的速度或默认速度
         rotation_speed = speed if speed is not None else self.turnSpeed
         
-        self.logger.info(f"开始旋转到目标角度: {target_angle}°，使用速度: {rotation_speed:.3f} rad/s")
+        control_mode = "PID控制" if use_pid else f"固定速度控制 ({rotation_speed:.3f} rad/s)"
+        self.logger.info(f"开始旋转到目标角度: {target_angle}°，控制模式: {control_mode}")
         
         # 规范化目标角度
         target_angle = self.normalizeAngle(target_angle)
@@ -138,6 +213,10 @@ class MotionComponent(Component):
         try:
             # 暂时禁用速度衰减
             self.disableSpeedAttenuation()
+            
+            # 如果使用PID控制，重置PID控制器
+            if use_pid:
+                self.rotation_pid.reset()
             
             loop_count = 0  # 循环计数器，用于控制日志输出频率
             
@@ -163,22 +242,30 @@ class MotionComponent(Component):
                     self.stopMotion()
                     return True
                 
-                # 计算控制输出（比例控制）
-                #angular_velocity = angle_error * self.rotationKp
-
-                # 限制最大旋转速度
-                #angular_velocity = util.clamp(angular_velocity, -self.maxRotationSpeed, self.maxRotationSpeed)
-
-                if angle_error > 0:
-                    angular_velocity = rotation_speed
+                # 计算控制输出
+                if use_pid:
+                    # 使用PID控制
+                    # 将角度误差转换为弧度进行PID计算
+                    angle_error_rad = math.radians(angle_error)
+                    angular_velocity = self.rotation_pid.compute(angle_error_rad)
+                    
+                    # 确保最小旋转速度，避免在目标附近停滞
+                    min_velocity = 0.05  # 最小角速度 rad/s
+                    if abs(angular_velocity) < min_velocity and abs(angle_error) > self.rotationTolerance / 2:
+                        angular_velocity = min_velocity if angle_error > 0 else -min_velocity
                 else:
-                    angular_velocity = -rotation_speed
+                    # 使用固定速度控制
+                    if angle_error > 0:
+                        angular_velocity = rotation_speed
+                    else:
+                        angular_velocity = -rotation_speed
 
                 # 每5个循环输出一次详细日志（约0.25秒一次）
                 if loop_count % 5 == 1:
                     elapsed_time = current_time - start_time
+                    control_info = "PID" if use_pid else "固定速度"
                     self.logger.info(
-                        f"旋转中 - 当前: {current_angle:.2f}°, 目标: {target_angle}°, "
+                        f"旋转中({control_info}) - 当前: {current_angle:.2f}°, 目标: {target_angle}°, "
                         f"差距: {angle_error:.2f}°, 速度: {angular_velocity:.3f} rad/s, "
                         f"用时: {elapsed_time:.1f}s"
                     )
@@ -202,7 +289,7 @@ class MotionComponent(Component):
             self.setSpeedAttenuation(was_attenuation_enabled)
             self.stopMotion()
 
-    async def rotateByAngle(self, delta_angle: float, timeout: float = 30.0, speed: float = None) -> bool:
+    async def rotateByAngle(self, delta_angle: float, timeout: float = 30.0, speed: float = None, use_pid: bool = False) -> bool:
         """
         相对当前位置旋转指定角度
         
@@ -210,12 +297,14 @@ class MotionComponent(Component):
             delta_angle: 要旋转的角度（度，正值为逆时针，负值为顺时针）
             timeout: 超时时间（秒）
             speed: 旋转速度（rad/s），为None时使用默认turnSpeed
+            use_pid: 是否启用PID控制，False时使用固定速度控制
         
         返回:
             bool: 是否成功完成旋转
         """
         rotation_speed = speed if speed is not None else self.turnSpeed
-        self.logger.info(f"开始相对旋转 {delta_angle}°，使用速度: {rotation_speed:.3f} rad/s")
+        control_mode = "PID控制" if use_pid else f"固定速度控制 ({rotation_speed:.3f} rad/s)"
+        self.logger.info(f"开始相对旋转 {delta_angle}°，控制模式: {control_mode}")
         
         # 获取当前角度
         current_angle = self.getCurrentYaw()
@@ -230,19 +319,21 @@ class MotionComponent(Component):
         )
         
         # 调用绝对角度旋转方法
-        return await self.rotateToAngle(target_angle_normalized, timeout, speed)
+        return await self.rotateToAngle(target_angle_normalized, timeout, speed, use_pid)
 
-    async def rotateLeft(self, angle: float = 90.0, timeout: float = 30.0, speed: float = None) -> bool:
+    async def rotateLeft(self, angle: float = 90.0, timeout: float = 30.0, speed: float = None, use_pid: bool = False) -> bool:
         """向左（逆时针）旋转指定角度"""
         rotation_speed = speed if speed is not None else self.turnSpeed
-        self.logger.info(f"向左旋转 {angle}° (逆时针)，使用速度: {rotation_speed:.3f} rad/s")
-        return await self.rotateByAngle(angle, timeout, speed)
+        control_mode = "PID控制" if use_pid else f"固定速度控制 ({rotation_speed:.3f} rad/s)"
+        self.logger.info(f"向左旋转 {angle}° (逆时针)，控制模式: {control_mode}")
+        return await self.rotateByAngle(angle, timeout, speed, use_pid)
 
-    async def rotateRight(self, angle: float = 90.0, timeout: float = 30.0, speed: float = None) -> bool:
+    async def rotateRight(self, angle: float = 90.0, timeout: float = 30.0, speed: float = None, use_pid: bool = False) -> bool:
         """向右（顺时针）旋转指定角度"""
         rotation_speed = speed if speed is not None else self.turnSpeed
-        self.logger.info(f"向右旋转 {angle}° (顺时针)，使用速度: {rotation_speed:.3f} rad/s")
-        return await self.rotateByAngle(-angle, timeout, speed)
+        control_mode = "PID控制" if use_pid else f"固定速度控制 ({rotation_speed:.3f} rad/s)"
+        self.logger.info(f"向右旋转 {angle}° (顺时针)，控制模式: {control_mode}")
+        return await self.rotateByAngle(-angle, timeout, speed, use_pid)
 
     def handleOperation(self, operation: str):
         """处理不同操作类型的公共函数"""
@@ -363,13 +454,14 @@ class MotionComponent(Component):
                 
                 self.logger.info(f"收到运动指令: {key}")
 
-                # 旋转到指定角度指令：rotateToAngle:90 或 rotateToAngle:90:0.5
+                # 旋转到指定角度指令：rotateToAngle:90 或 rotateToAngle:90:0.5 或 rotateToAngle:90:0.5:pid
                 if key.startswith("rotateToAngle:"):
                     try:
                         parts = key.split(":")
                         angle_str = parts[1]
                         target_angle = float(angle_str)
                         speed = None
+                        use_pid = False
                         
                         # 检查是否有指定速度参数
                         if len(parts) >= 3:
@@ -379,22 +471,28 @@ class MotionComponent(Component):
                                 self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
                                 continue
                         
+                        # 检查是否启用PID控制
+                        if len(parts) >= 4 and parts[3].lower() == "pid":
+                            use_pid = True
+                        
                         if -180 <= target_angle <= 180:
-                            success = await self.rotateToAngle(target_angle, speed=speed)
+                            success = await self.rotateToAngle(target_angle, speed=speed, use_pid=use_pid)
                             speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
-                            self.logger.info(f"旋转到角度 {target_angle}° {'成功' if success else '失败'}{speed_info}")
+                            control_info = f"，PID控制: {'启用' if use_pid else '禁用'}"
+                            self.logger.info(f"旋转到角度 {target_angle}° {'成功' if success else '失败'}{speed_info}{control_info}")
                         else:
                             self.logger.warning(f"目标角度超出范围: {target_angle}° (有效范围: -180° ~ 180°)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
 
-                # 相对旋转指令：rotateBy:45 或 rotateBy:45:0.8
+                # 相对旋转指令：rotateBy:45 或 rotateBy:45:0.8 或 rotateBy:45:0.8:pid
                 elif key.startswith("rotateBy:"):
                     try:
                         parts = key.split(":")
                         angle_str = parts[1]
                         delta_angle = float(angle_str)
                         speed = None
+                        use_pid = False
                         
                         # 检查是否有指定速度参数
                         if len(parts) >= 3:
@@ -404,16 +502,21 @@ class MotionComponent(Component):
                                 self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
                                 continue
                         
+                        # 检查是否启用PID控制
+                        if len(parts) >= 4 and parts[3].lower() == "pid":
+                            use_pid = True
+                        
                         if -360 <= delta_angle <= 360:
-                            success = await self.rotateByAngle(delta_angle, speed=speed)
+                            success = await self.rotateByAngle(delta_angle, speed=speed, use_pid=use_pid)
                             speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
-                            self.logger.info(f"相对旋转 {delta_angle}° {'成功' if success else '失败'}{speed_info}")
+                            control_info = f"，PID控制: {'启用' if use_pid else '禁用'}"
+                            self.logger.info(f"相对旋转 {delta_angle}° {'成功' if success else '失败'}{speed_info}{control_info}")
                         else:
                             self.logger.warning(f"旋转角度超出范围: {delta_angle}° (有效范围: -360° ~ 360°)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
 
-                # 向左旋转指令：rotateLeft 或 rotateLeft:90 或 rotateLeft:90:0.5
+                # 向左旋转指令：rotateLeft 或 rotateLeft:90 或 rotateLeft:90:0.5 或 rotateLeft:90:0.5:pid
                 elif key == "rotateLeft":
                     success = await self.rotateLeft()  # 默认90度
                     self.logger.info(f"向左旋转90° {'成功' if success else '失败'}")
@@ -423,6 +526,7 @@ class MotionComponent(Component):
                         angle_str = parts[1]
                         angle = float(angle_str)
                         speed = None
+                        use_pid = False
                         
                         # 检查是否有指定速度参数
                         if len(parts) >= 3:
@@ -432,16 +536,21 @@ class MotionComponent(Component):
                                 self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
                                 continue
                         
+                        # 检查是否启用PID控制
+                        if len(parts) >= 4 and parts[3].lower() == "pid":
+                            use_pid = True
+                        
                         if 0 < angle <= 360:
-                            success = await self.rotateLeft(angle, speed=speed)
+                            success = await self.rotateLeft(angle, speed=speed, use_pid=use_pid)
                             speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
-                            self.logger.info(f"向左旋转 {angle}° {'成功' if success else '失败'}{speed_info}")
+                            control_info = f"，PID控制: {'启用' if use_pid else '禁用'}"
+                            self.logger.info(f"向左旋转 {angle}° {'成功' if success else '失败'}{speed_info}{control_info}")
                         else:
                             self.logger.warning(f"旋转角度超出范围: {angle}° (有效范围: 0° ~ 360°)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
 
-                # 向右旋转指令：rotateRight 或 rotateRight:45 或 rotateRight:45:0.3
+                # 向右旋转指令：rotateRight 或 rotateRight:45 或 rotateRight:45:0.3 或 rotateRight:45:0.3:pid
                 elif key == "rotateRight":
                     success = await self.rotateRight()  # 默认90度
                     self.logger.info(f"向右旋转90° {'成功' if success else '失败'}")
@@ -451,6 +560,7 @@ class MotionComponent(Component):
                         angle_str = parts[1]
                         angle = float(angle_str)
                         speed = None
+                        use_pid = False
                         
                         # 检查是否有指定速度参数
                         if len(parts) >= 3:
@@ -460,10 +570,15 @@ class MotionComponent(Component):
                                 self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
                                 continue
                         
+                        # 检查是否启用PID控制
+                        if len(parts) >= 4 and parts[3].lower() == "pid":
+                            use_pid = True
+                        
                         if 0 < angle <= 360:
-                            success = await self.rotateRight(angle, speed=speed)
+                            success = await self.rotateRight(angle, speed=speed, use_pid=use_pid)
                             speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
-                            self.logger.info(f"向右旋转 {angle}° {'成功' if success else '失败'}{speed_info}")
+                            control_info = f"，PID控制: {'启用' if use_pid else '禁用'}"
+                            self.logger.info(f"向右旋转 {angle}° {'成功' if success else '失败'}{speed_info}{control_info}")
                         else:
                             self.logger.warning(f"旋转角度超出范围: {angle}° (有效范围: 0° ~ 360°)")
                     except (ValueError, IndexError) as e:
@@ -557,11 +672,58 @@ class MotionComponent(Component):
                         max_speed = float(value_str)
                         if 0.1 <= max_speed <= 3.0:
                             self.maxRotationSpeed = max_speed
+                            # 同时更新PID控制器的最大输出
+                            self.rotation_pid.max_output = max_speed
                             self.logger.info(f"最大旋转速度已设置为: {max_speed} rad/s")
                         else:
                             self.logger.warning(f"最大旋转速度超出范围: {max_speed} (有效范围: 0.1 ~ 3.0)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的最大速度格式: {key}, 错误: {str(e)}")
+
+                # PID参数调整指令
+                elif key.startswith("setPidKp:"):
+                    try:
+                        value_str = key.split(":")[1]
+                        kp = float(value_str)
+                        if 0.001 <= kp <= 0.5:
+                            self.pidKp = kp
+                            self.rotation_pid.kp = kp
+                            self.logger.info(f"PID比例系数已设置为: {kp}")
+                        else:
+                            self.logger.warning(f"PID Kp超出范围: {kp} (有效范围: 0.001 ~ 0.5)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的PID Kp格式: {key}, 错误: {str(e)}")
+
+                elif key.startswith("setPidKi:"):
+                    try:
+                        value_str = key.split(":")[1]
+                        ki = float(value_str)
+                        if 0.0 <= ki <= 0.1:
+                            self.pidKi = ki
+                            self.rotation_pid.ki = ki
+                            self.logger.info(f"PID积分系数已设置为: {ki}")
+                        else:
+                            self.logger.warning(f"PID Ki超出范围: {ki} (有效范围: 0.0 ~ 0.1)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的PID Ki格式: {key}, 错误: {str(e)}")
+
+                elif key.startswith("setPidKd:"):
+                    try:
+                        value_str = key.split(":")[1]
+                        kd = float(value_str)
+                        if 0.0 <= kd <= 0.1:
+                            self.pidKd = kd
+                            self.rotation_pid.kd = kd
+                            self.logger.info(f"PID微分系数已设置为: {kd}")
+                        else:
+                            self.logger.warning(f"PID Kd超出范围: {kd} (有效范围: 0.0 ~ 0.1)")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(f"无效的PID Kd格式: {key}, 错误: {str(e)}")
+                
+                # 重置PID控制器指令
+                elif key == "resetPid":
+                    self.rotation_pid.reset()
+                    self.logger.info("PID控制器已重置")
 
                 # 显示当前参数状态
                 elif key == "showMotionParams":
@@ -571,6 +733,7 @@ class MotionComponent(Component):
                     self.logger.info(f"旋转容忍度: {self.rotationTolerance}°")
                     self.logger.info(f"旋转比例系数: {self.rotationKp}")
                     self.logger.info(f"最大旋转速度: {self.maxRotationSpeed} rad/s")
+                    self.logger.info(f"PID参数 - Kp: {self.pidKp}, Ki: {self.pidKi}, Kd: {self.pidKd}")
                     self.logger.info(f"速度衰减: {'启用' if self.speedAttenuationEnabled else '禁用'}")
                     if hasattr(self.main, 'imuComponent'):
                         current_yaw = self.main.imuComponent.getYaw()

@@ -901,11 +901,12 @@ class ActionComponent(Component):
             
             yaw: float = self.main.imuComponent.getYaw()
             
-            await self.main.motionComponent.rotateLeft(120, 10)
+            await self.main.motionComponent.rotateLeft(120, timeout=10, use_pid=True)
 
             await self.main.broadcastComponent.playAudio("开始寻找着火点")
 
-            await self.main.motionComponent.rotateLeft(53, 10, 0.2)
+            #await self.main.motionComponent.rotateLeft(53, 10, 0.2)
+            await self.main.motionComponent.rotateLeft(60, timeout=10, speed=0.2, True)
 
             #try :
             #
@@ -948,8 +949,9 @@ class ActionComponent(Component):
 
             #await self.returnVoyage()
 
-            await self.main.motionComponent.rotateLeft(170, 10)
-            
+            #await self.main.motionComponent.rotateLeft(170, 10)
+            await self.main.motionComponent.rotateLeft(180, timeout=10, use_pid=True)
+
             try:
                 await self.moveToTargetDistance(0.5, timeout=5.5)
             except asyncio.CancelledError:
