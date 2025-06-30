@@ -112,18 +112,22 @@ class MotionComponent(Component):
         diff = target_angle - current_angle
         return self.normalizeAngle(diff)
 
-    async def rotateToAngle(self, target_angle: float, timeout: float = 30.0) -> bool:
+    async def rotateToAngle(self, target_angle: float, timeout: float = 30.0, speed: float = None) -> bool:
         """
         旋转到指定的绝对角度
         
         参数:
             target_angle: 目标角度（度，-180到180）
             timeout: 超时时间（秒）
+            speed: 旋转速度（rad/s），为None时使用默认turnSpeed
         
         返回:
             bool: 是否成功到达目标角度
         """
-        self.logger.info(f"开始旋转到目标角度: {target_angle}°")
+        # 使用指定的速度或默认速度
+        rotation_speed = speed if speed is not None else self.turnSpeed
+        
+        self.logger.info(f"开始旋转到目标角度: {target_angle}°，使用速度: {rotation_speed:.3f} rad/s")
         
         # 规范化目标角度
         target_angle = self.normalizeAngle(target_angle)
@@ -166,9 +170,9 @@ class MotionComponent(Component):
                 #angular_velocity = util.clamp(angular_velocity, -self.maxRotationSpeed, self.maxRotationSpeed)
 
                 if angle_error > 0:
-                    angular_velocity = self.turnSpeed
+                    angular_velocity = rotation_speed
                 else:
-                    angular_velocity = -self.turnSpeed
+                    angular_velocity = -rotation_speed
 
                 # 每5个循环输出一次详细日志（约0.25秒一次）
                 if loop_count % 5 == 1:
@@ -198,18 +202,20 @@ class MotionComponent(Component):
             self.setSpeedAttenuation(was_attenuation_enabled)
             self.stopMotion()
 
-    async def rotateByAngle(self, delta_angle: float, timeout: float = 30.0) -> bool:
+    async def rotateByAngle(self, delta_angle: float, timeout: float = 30.0, speed: float = None) -> bool:
         """
         相对当前位置旋转指定角度
         
         参数:
             delta_angle: 要旋转的角度（度，正值为逆时针，负值为顺时针）
             timeout: 超时时间（秒）
+            speed: 旋转速度（rad/s），为None时使用默认turnSpeed
         
         返回:
             bool: 是否成功完成旋转
         """
-        self.logger.info(f"开始相对旋转 {delta_angle}°")
+        rotation_speed = speed if speed is not None else self.turnSpeed
+        self.logger.info(f"开始相对旋转 {delta_angle}°，使用速度: {rotation_speed:.3f} rad/s")
         
         # 获取当前角度
         current_angle = self.getCurrentYaw()
@@ -224,17 +230,19 @@ class MotionComponent(Component):
         )
         
         # 调用绝对角度旋转方法
-        return await self.rotateToAngle(target_angle_normalized, timeout)
+        return await self.rotateToAngle(target_angle_normalized, timeout, speed)
 
-    async def rotateLeft(self, angle: float = 90.0, timeout: float = 30.0) -> bool:
+    async def rotateLeft(self, angle: float = 90.0, timeout: float = 30.0, speed: float = None) -> bool:
         """向左（逆时针）旋转指定角度"""
-        self.logger.info(f"向左旋转 {angle}° (逆时针)")
-        return await self.rotateByAngle(angle, timeout)
+        rotation_speed = speed if speed is not None else self.turnSpeed
+        self.logger.info(f"向左旋转 {angle}° (逆时针)，使用速度: {rotation_speed:.3f} rad/s")
+        return await self.rotateByAngle(angle, timeout, speed)
 
-    async def rotateRight(self, angle: float = 90.0, timeout: float = 30.0) -> bool:
+    async def rotateRight(self, angle: float = 90.0, timeout: float = 30.0, speed: float = None) -> bool:
         """向右（顺时针）旋转指定角度"""
-        self.logger.info(f"向右旋转 {angle}° (顺时针)")
-        return await self.rotateByAngle(-angle, timeout)
+        rotation_speed = speed if speed is not None else self.turnSpeed
+        self.logger.info(f"向右旋转 {angle}° (顺时针)，使用速度: {rotation_speed:.3f} rad/s")
+        return await self.rotateByAngle(-angle, timeout, speed)
 
     def handleOperation(self, operation: str):
         """处理不同操作类型的公共函数"""
@@ -355,59 +363,107 @@ class MotionComponent(Component):
                 
                 self.logger.info(f"收到运动指令: {key}")
 
-                # 旋转到指定角度指令：rotateToAngle:90
+                # 旋转到指定角度指令：rotateToAngle:90 或 rotateToAngle:90:0.5
                 if key.startswith("rotateToAngle:"):
                     try:
-                        angle_str = key.split(":")[1]
+                        parts = key.split(":")
+                        angle_str = parts[1]
                         target_angle = float(angle_str)
+                        speed = None
+                        
+                        # 检查是否有指定速度参数
+                        if len(parts) >= 3:
+                            speed_str = parts[2]
+                            speed = float(speed_str)
+                            if speed <= 0 or speed > 5.0:
+                                self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
+                                continue
+                        
                         if -180 <= target_angle <= 180:
-                            success = await self.rotateToAngle(target_angle)
-                            self.logger.info(f"旋转到角度 {target_angle}° {'成功' if success else '失败'}")
+                            success = await self.rotateToAngle(target_angle, speed=speed)
+                            speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
+                            self.logger.info(f"旋转到角度 {target_angle}° {'成功' if success else '失败'}{speed_info}")
                         else:
                             self.logger.warning(f"目标角度超出范围: {target_angle}° (有效范围: -180° ~ 180°)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
 
-                # 相对旋转指令：rotateBy:45 或 rotateBy:-30
+                # 相对旋转指令：rotateBy:45 或 rotateBy:45:0.8
                 elif key.startswith("rotateBy:"):
                     try:
-                        angle_str = key.split(":")[1]
+                        parts = key.split(":")
+                        angle_str = parts[1]
                         delta_angle = float(angle_str)
+                        speed = None
+                        
+                        # 检查是否有指定速度参数
+                        if len(parts) >= 3:
+                            speed_str = parts[2]
+                            speed = float(speed_str)
+                            if speed <= 0 or speed > 5.0:
+                                self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
+                                continue
+                        
                         if -360 <= delta_angle <= 360:
-                            success = await self.rotateByAngle(delta_angle)
-                            self.logger.info(f"相对旋转 {delta_angle}° {'成功' if success else '失败'}")
+                            success = await self.rotateByAngle(delta_angle, speed=speed)
+                            speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
+                            self.logger.info(f"相对旋转 {delta_angle}° {'成功' if success else '失败'}{speed_info}")
                         else:
                             self.logger.warning(f"旋转角度超出范围: {delta_angle}° (有效范围: -360° ~ 360°)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
 
-                # 向左旋转指令：rotateLeft 或 rotateLeft:90
+                # 向左旋转指令：rotateLeft 或 rotateLeft:90 或 rotateLeft:90:0.5
                 elif key == "rotateLeft":
                     success = await self.rotateLeft()  # 默认90度
                     self.logger.info(f"向左旋转90° {'成功' if success else '失败'}")
                 elif key.startswith("rotateLeft:"):
                     try:
-                        angle_str = key.split(":")[1]
+                        parts = key.split(":")
+                        angle_str = parts[1]
                         angle = float(angle_str)
+                        speed = None
+                        
+                        # 检查是否有指定速度参数
+                        if len(parts) >= 3:
+                            speed_str = parts[2]
+                            speed = float(speed_str)
+                            if speed <= 0 or speed > 5.0:
+                                self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
+                                continue
+                        
                         if 0 < angle <= 360:
-                            success = await self.rotateLeft(angle)
-                            self.logger.info(f"向左旋转 {angle}° {'成功' if success else '失败'}")
+                            success = await self.rotateLeft(angle, speed=speed)
+                            speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
+                            self.logger.info(f"向左旋转 {angle}° {'成功' if success else '失败'}{speed_info}")
                         else:
                             self.logger.warning(f"旋转角度超出范围: {angle}° (有效范围: 0° ~ 360°)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的角度格式: {key}, 错误: {str(e)}")
 
-                # 向右旋转指令：rotateRight 或 rotateRight:45
+                # 向右旋转指令：rotateRight 或 rotateRight:45 或 rotateRight:45:0.3
                 elif key == "rotateRight":
                     success = await self.rotateRight()  # 默认90度
                     self.logger.info(f"向右旋转90° {'成功' if success else '失败'}")
                 elif key.startswith("rotateRight:"):
                     try:
-                        angle_str = key.split(":")[1]
+                        parts = key.split(":")
+                        angle_str = parts[1]
                         angle = float(angle_str)
+                        speed = None
+                        
+                        # 检查是否有指定速度参数
+                        if len(parts) >= 3:
+                            speed_str = parts[2]
+                            speed = float(speed_str)
+                            if speed <= 0 or speed > 5.0:
+                                self.logger.warning(f"旋转速度超出范围: {speed} rad/s (有效范围: 0 ~ 5.0)")
+                                continue
+                        
                         if 0 < angle <= 360:
-                            success = await self.rotateRight(angle)
-                            self.logger.info(f"向右旋转 {angle}° {'成功' if success else '失败'}")
+                            success = await self.rotateRight(angle, speed=speed)
+                            speed_info = f"，速度: {speed:.3f} rad/s" if speed is not None else ""
+                            self.logger.info(f"向右旋转 {angle}° {'成功' if success else '失败'}{speed_info}")
                         else:
                             self.logger.warning(f"旋转角度超出范围: {angle}° (有效范围: 0° ~ 360°)")
                     except (ValueError, IndexError) as e:

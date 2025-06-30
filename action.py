@@ -905,6 +905,8 @@ class ActionComponent(Component):
 
             await self.main.broadcastComponent.playAudio("开始寻找着火点")
 
+            await self.main.motionComponent.rotateLeft(60, 10, 0.2)
+
             #try :
             #
             #    await self.searchFire(timeout=10)
@@ -918,9 +920,9 @@ class ActionComponent(Component):
             #    await self.main.motionComponent.rotateToAngle(yaw + 180, 10)
             #
             
-            await self.main.motionComponent.rotateLeft(60, 10)
+            #await self.main.motionComponent.rotateLeft(60, 10)
             
-            syaw : float = self.main.imuComponent.getYaw()
+            #syaw : float = self.main.imuComponent.getYaw()
             
             #distance = await self.multipleDepthImageCalculateDistance(5, None)
             #targetDistance = distance - 0.2
@@ -942,12 +944,12 @@ class ActionComponent(Component):
 
             #await self.returnVoyage()
 
-            await self.main.motionComponent.rotateToAngle(yaw)
+            await self.main.motionComponent.rotateLeft(180, 10)
             
             await self.moveToTargetDistance(0.5)
-            
-            await self.main.motionComponent.rotateToAngle(yaw)
 
+            await self.main.motionComponent.rotateLeft(yaw, 10)
+            
             await self.inCabin()
 
         except Exception as e:
