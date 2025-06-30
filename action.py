@@ -13,12 +13,12 @@ class ActionComponent(Component):
         asyncio.create_task(self.commandLoop())
 
     async def dispatched(self):
-        await self.main.broadcastComponent.playAudio("发现着火目标，已上报服务器")
-        await asyncio.sleep(1)
-        await self.main.broadcastComponent.playAudio("派遣消防小车前去灭火")
-        await asyncio.sleep(1)
-        await self.main.broadcastComponent.playAudio("派遣智能无人机协助灭火")
-        await asyncio.sleep(1)
+        await self.main.broadcastComponent.playAudio("警报声")
+        #await asyncio.sleep(1)
+        #await self.main.broadcastComponent.playAudio("派遣消防小车前去灭火")
+        #await asyncio.sleep(1)
+        #await self.main.broadcastComponent.playAudio("派遣智能无人机协助灭火")
+        #await asyncio.sleep(1)
         await self.main.deviceComponent.sendCommand(Command(UavBaseStationOperation, "CabinDoorOpen"))
         await asyncio.sleep(1)
         await self.main.deviceComponent.sendCommand(Command(UavBaseStationOperation, "LocalOpen"))
