@@ -142,7 +142,7 @@ class BroadcastComponent(Component):
         return fileName in self.audioFiles
 
     async def playLoop(self):
-        queue: asyncio.Queue[CommandEvent] = self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=16))
+        queue: asyncio.Queue[CommandEvent] = await self.main.commandComponent.commandEvent.subscribe(asyncio.Queue(maxsize=16))
 
         while True:
             try:
