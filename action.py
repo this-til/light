@@ -893,7 +893,7 @@ class ActionComponent(Component):
 
             await self.exitCabin()
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("正在建图，请稍候"))
+            await self.main.broadcastComponent.playAudio("正在建图，请稍候")
 
             #await self.startMapping()
             
@@ -905,18 +905,20 @@ class ActionComponent(Component):
 
             await self.main.broadcastComponent.playAudio("开始寻找着火点")
 
-            try :
-            
-                await self.searchFire(timeout=10)
-                
-                await self.main.motionComponent.rotateLeft(10, 10)
+            #try :
+            #
+            #    await self.searchFire(timeout=10)
+            #    
+            #    await self.main.motionComponent.rotateLeft(10, 10)
 
-                await self.alignWithFire(timeout=10)
-                
-            except Exception as e:
-                self.logger.error(f"寻找火源 Error: {str(e)}")
-                await self.main.motionComponent.rotateToAngle(yaw + 180, 10)
+            #    await self.alignWithFire(timeout=10)
+            #    
+            #except Exception as e:
+            #    self.logger.error(f"寻找火源 Error: {str(e)}")
+            #    await self.main.motionComponent.rotateToAngle(yaw + 180, 10)
+            #
             
+            await self.main.motionComponent.rotateLeft(60, 10)
             
             syaw : float = self.main.imuComponent.getYaw()
             
@@ -940,7 +942,7 @@ class ActionComponent(Component):
 
             #await self.returnVoyage()
 
-            await self.main.motionComponent.rotateToAngle(syaw + 180, 10)
+            await self.main.motionComponent.rotateToAngle(yaw)
             
             await self.moveToTargetDistance(0.5)
             
