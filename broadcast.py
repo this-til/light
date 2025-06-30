@@ -27,6 +27,7 @@ class BroadcastComponent(Component):
         
         # 启动指令循环
         asyncio.create_task(self.instructionLoop())
+        asyncio.create_task(self.playLoop())
 
     async def scanAudioFiles(self):
         """扫描soundSource目录下的音频文件并生成文件表"""
