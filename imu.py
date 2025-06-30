@@ -3,31 +3,50 @@ from main import Component, ConfigField
 import rospy
 import asyncio
 from sensor_msgs.msg import Imu
+from tf.transformations import euler_from_quaternion
+import math
 
 class ImuComponent(Component):
 
     debug : ConfigField[bool] = ConfigField()
     
-    quaternion : util.Quaternion = util.Quaternion()
+    # quaternion : util.Quaternion = util.Quaternion()
     euler : util.V3 = util.V3()
     
     async def init(self):
         await super().init()
-        rospy.Subscriber("/unilidar/imu", Imu, self.imuCallback)
+        rospy.Subscriber("/wit/imu", Imu, self.imuCallback)
         
         if self.debug:
             asyncio.create_task(self.debugLoop())
             
         
     def imuCallback(self, msg : Imu):
-        orientation = msg.orientation
-        self.quaternion = util.Quaternion(
-            orientation.x,
-            orientation.y,
-            orientation.z,
-            orientation.w
-        )
-        self.euler = self.quaternion.toEulerAnglesDegrees()
+        if msg.orientation_covariance[0] < 0:
+            return
+        
+        quaternion = [
+            msg.orientation.x,
+            msg.orientation.y,
+            msg.orientation.z,
+            msg.orientation.w
+        ]
+        
+        (roll,pitch,yaw) = euler_from_quaternion(quaternion)
+        
+        roll = roll*180.0/math.pi
+        pitch = pitch*180.0/math.pi
+        yaw = yaw*180.0/math.pi
+        
+        
+        #self.quaternion = util.Quaternion(
+        #    msg.orientation.x*180/math.pi,
+        #    msg.orientation.y*180/math.pi,
+        #    msg.orientation.z*180/math.pi,
+        #    msg.orientation.w*180/math.pi
+        #)
+        
+        self.euler = util.V3(roll, pitch, yaw)
         
     async def debugLoop(self):
         

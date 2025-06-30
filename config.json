@@ -29,7 +29,7 @@
   },
   "MotionComponent": {
     "speed": 0.4,
-    "turnSpeed": 1.6,
+    "turnSpeed": 1,
     "rotationTolerance": 2.0,
     "rotationKp": 0.02,
     "maxRotationSpeed": 2.4
@@ -43,6 +43,6 @@
     "soundSource": "/home/cat/car/sound"
   },
   "ImuComponent" :{
-    "debug" : false
+    "debug" : true
   }
 }

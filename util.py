@@ -1649,3 +1649,8 @@ def clampV3(v: V3, minVal: V3, maxVal: V3) -> V3:
         clamp(v.y, minVal.y, maxVal.y),
         clamp(v.z, minVal.z, maxVal.z)
     )
+    
+def debugTasks():
+    for task in asyncio.all_tasks():
+        print(f"\n{'='*30} 任务 {task.get_name()} {'='*30}")
+        task.print_stack()  # 直接打印堆栈跟踪

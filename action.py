@@ -892,7 +892,7 @@ class ActionComponent(Component):
 
             asyncio.create_task(self.main.broadcastComponent.playAudio("正在建图，请稍候"))
 
-            await self.startMapping()
+            #await self.startMapping()
             
             await asyncio.sleep(2)
             
@@ -902,28 +902,46 @@ class ActionComponent(Component):
 
             await self.main.broadcastComponent.playAudio("开始寻找着火点")
 
-            await self.searchFire()
+            try :
             
-            await self.alignWithFire()
+                await self.searchFire(timeout=10)
+                
+                await self.main.motionComponent.rotateLeft(10, 10)
+
+                await self.alignWithFire(timeout=10)
+                
+            except Exception as e:
+                self.logger.error(f"寻找火源 Error: {str(e)}")
+                await self.main.motionComponent.rotateToAngle(yaw + 180, 10)
             
-            distance = await self.multipleDepthImageCalculateDistance(5, None)
-            targetDistance = distance - 0.2
+            
+            syaw : float = self.main.imuComponent.getYaw()
+            
+            #distance = await self.multipleDepthImageCalculateDistance(5, None)
+            #targetDistance = distance - 0.2
 
             await self.main.broadcastComponent.playAudio("发现着火目标，正在前往")
 
             # 使用 Pose 对象创建目标位置
-            target_position = util.V3(targetDistance, 0, 0)
-            await self.actionNavToPosition(target_position)
+            # target_position = util.V3(targetDistance, 0, 0)
+            # await self.actionNavToPosition(target_position)
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("已到达着火地点，开始灭火"))
+            await self.moveToTargetDistance(0.5)
+
+
+            await self.main.broadcastComponent.playAudio("已到达着火地点，开始灭火")
 
             await asyncio.sleep(3)
 
-            asyncio.create_task(self.main.broadcastComponent.playAudio("完成灭火操作，正在返航"))
+            await self.main.broadcastComponent.playAudio("完成灭火操作，正在返航")
 
-            await self.returnVoyage()
+            #await self.returnVoyage()
 
-            await self.main.motionComponent.rotateToAngle(yaw)
+            await self.main.motionComponent.rotateLeft(180, 10)
+            
+            await self.moveToTargetDistance(0.5)
+            
+            # await self.main.motionComponent.rotateToAngle(yaw)
 
             await self.inCabin()
 
@@ -939,7 +957,7 @@ class ActionComponent(Component):
             
             asyncio.create_task(self.main.broadcastComponent.playAudio("正在建图，请稍候"))
             
-            await self.startMapping()
+            #await self.startMapping()
             
             await asyncio.sleep(2)
             
@@ -997,7 +1015,7 @@ class ActionComponent(Component):
                     await self.demonstration2()
                     
                 if command.key == "Dispatch":
-                    await self.demonstration2()
+                    await self.demonstration()
                 
                 if command.key == "End.Dispatch":
                     await self.endDemonstration()
@@ -1077,6 +1095,9 @@ class ActionComponent(Component):
                             self.logger.warning(f"目标距离超出范围: {target_distance}m (有效范围: 0.1m - 10.0m)")
                     except (ValueError, IndexError) as e:
                         self.logger.error(f"无效的距离格式: {key}, 错误: {str(e)}")
+                        
+                if key == "debugTasks":
+                    util.debugTasks()
 
 
             except asyncio.CancelledError:
